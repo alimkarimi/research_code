@@ -5,3 +5,5 @@
 # Python Compiled files #
 #########################
 *.pyc
+
+# another class of things to ignore #
