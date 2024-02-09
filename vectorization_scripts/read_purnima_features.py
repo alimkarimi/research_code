@@ -21,7 +21,14 @@ def get_svr_features(debug=False, data_path='2022_f54'):
       - '20210727' '20210802' '20210808' '20210816
     - HIPS 2021 is field 42
     - HIPS 2022 is field 78
-    - Used for different genotype experiments
+    - Used for different genotype experiments with the same nitrogen treatment.
+    - Plot 4351 - 4394 are hybrid in 2021, rest are inbred
+    - Pedigree information is in HIPS_YS_2021.xlsx
+
+    For HIPS in 2022 only:
+     - input 'hips_2022' as the arg to data_path
+     - Plot 6351 - 6494 are hybrid in 2022, rest are inbred. 
+     - Pedigree information is in '2022 YS_HIPS_BCS all data.xlsx'
 
     For HIPS in 2021 and 2022:
      - input 'hips_both_years' as the arg to data_path:
@@ -33,17 +40,21 @@ def get_svr_features(debug=False, data_path='2022_f54'):
     - HIPS 2021 is field 42
     - HIPS 2022 is field 78
     - Used for different genotype experiments with the same nitrogen treatment
+    - Note that ground truth data for 2022 is in another directory (Features/LAI_Data/HIPS22)
+
 
     """
-    base_path = '/Volumes/iot4agrs/data/students/Alim/data_from_Purnima/Features/Final_Features'
+    base_path = '/Volumes/iot4agrs/data/students/Alim/data_from_Purnima/Features/'
     # for some reason, sometimes I need to have base_path be /Volumes/depot/iot4agrs/ ...
 
-    if data_path == 'hips_both_years':
-        path_w_env = '/2021_2022_HIPS/LiDAR_and_spectral_with_envi_variables/'
+    if data_path == 'hips_both_years' or data_path == 'hips_2022':
+        path_w_env = 'Final_Features/2021_2022_HIPS/LiDAR_and_spectral_with_envi_variables/'
+        path_w_2022_gt = 'LAI_Data/HIPS_22/'
     if data_path == 'hips_2021':
-        path_w_env = '/2021_HIPS/LiDAR_and_spectral_with_GDD_Precipitation/'
+        path_w_env = 'Final_Features/2021_HIPS/LiDAR_and_spectral_with_GDD_Precipitation/'
     if data_path == '2022_f54':
-        path_w_env = '/Field54_2022/LiDAR_and_spectral_with_GDD_precipitation/'
+        path_w_env = 'Final_Features/Field54_2022/LiDAR_and_spectral_with_GDD_precipitation/'
+
 
     dates = os.listdir(base_path + path_w_env)
     if '.DS_Store' in dates:
@@ -56,15 +67,150 @@ def get_svr_features(debug=False, data_path='2022_f54'):
     for n, date in enumerate(dates):
         file_to_open = base_path + path_w_env  + date + '/features3.csv'
         temp_df = pd.read_csv(file_to_open)
+        temp_df.columns = temp_df.columns.str.strip() # strip whitespace from column names
         temp_df['date'] = date
-        print(date)
         df = pd.concat([df, temp_df], ignore_index=True)
         if debug:
+            print('processing date: ', date)
             print(temp_df.shape)
             print(df.shape)
             print(df.head())
             print(df.tail())
             print(df.describe())
+        
+        # only will need to go into the if statement below if we want data from 2022 and 2021 from
+        # HIPS
+        if (n == len(dates) - 1) and (data_path == 'hips_both_years' or data_path == 'hips_2022'):
+            # The features in 2021 are a subset of the features in 2022.
+            # This if statement removes the ones that are not in both sets (i.e, finds 
+            # the intersection).
+            # Create a set from 2021 and 2022. Then apply set intersection and remove those that are not in 
+            # the 2021 set.
+            df_2021 = get_svr_features(data_path='hips_2021')
+            df_2021_cols = set(df_2021.columns.values)
+            df_2022_cols = set(df.columns.values)
+            set_intersect = df_2022_cols.intersection(df_2021_cols)
+            set_intersect = list(set_intersect)
+            df = df[df.columns.intersection(set_intersect)]
+            if debug:
+                print(df_2021_cols)
+                print('this is the set_intersect', set_intersect)
+                print('done cleaning column names...')
+                print('about to append 2022 LAI GT data...')
+            
+            # append LAI ground truth to 2021 and 2022 dataframe
+
+            ground_truth_2022_HIPS = base_path + path_w_2022_gt
+            df_2022_HIPS_GT = pd.read_excel(ground_truth_2022_HIPS + 'LAI.xlsx')
+            df_2022_HIPS_GT.columns = df_2022_HIPS_GT.columns.map(str)
+            if debug:
+                print('shape of 2022 GT data:', df_2022_HIPS_GT.shape)
+
+
+            # this for loop below goes through every row of the dataframe.
+            # for every LAI ground truth that is blank in df, we get the plot id and date
+            # that the blank LAI GT value corresponds to, find the LAI for that plot id
+            # and date from the df_2022_HIPS_GT dataframe, and insert that value into 
+            # the previously blank LAI value.
+            # if the plot id does not exist, we delete that row.
+            for i in range(df.shape[0]):
+                if pd.isna(df.loc[i, 'LAI']):
+                    temp_date = df.loc[i, 'date']
+                    # get plot id for the current date:
+                    if pd.notna(df['Plot'][i]):
+                        temp_plot_id = df['Plot'][i]
+                        #print('plot id is', temp_plot_id)
+                        # get the plot ids LAI value from df_2022_HIPS_GT:
+                        temp_filtered = df_2022_HIPS_GT[df_2022_HIPS_GT['plot'] == temp_plot_id]
+                        df.loc[i, 'LAI'] = temp_filtered[temp_date].values
+                    if pd.isna(df['Plot'][i]):
+                        print('dropping row!!!')
+                        # remove this row from dataframe. Data cannot be used.
+                        df = df.drop(i) 
+            df = df.reset_index(drop=True) # reset indexing for the dropped rows. We do not want to change in the loop above
+            # as that can cause issues with going through the range/shape in the for i in range(df.shape[0]) command.
+
+    
+    if data_path == 'hips_2022':
+        # for creating 2022, we loaded 2021 and 2022 data. We need to drop 2021 from df
+        df = df[df['date'].str.contains('2022')]
+        df = df.reset_index(drop=True) # subsetting only the 2022 data gives us indices that start from 352. Not ideal for
+        # future operations / slicing. drop=True means that we will not get a new column called 'index' with the original
+        # indices. 
+        
+
+    if data_path == 'hips_2022' or data_path == 'hips_2021' or data_path == 'hips_both_years':
+        # below, we add data about hybrid vs inbred and pedigree (i.e, variant). This is only relevant for HIPS.
+
+        # open pedigree spreadsheets:
+        pedigree_df_2021 = pd.read_excel('/Volumes/depot/iot4agrs/data/students/Alim/pedigree_data/' + 'HIPS_YS_2021.xlsx')
+        pedigree_df_2022 = pd.read_excel('/Volumes/depot/iot4agrs/data/students/Alim/pedigree_data/' + '2022 YS_HIPS_BCS all data.xlsx')
+        print('opened pedigree data...')
+
+        
+        # initialize columns for hybrid/inbred and pedigree
+        df['hybrid_or_inbred'] = None
+        df['pedigree'] = None        
+        
+        for row in range(df.shape[0]):
+            # get plot id:
+            temp_plot_id = df.loc[row, 'Plot']
+            if (temp_plot_id >= 6351.0) and (temp_plot_id <= 6494.0): # hybrid vs inbred for 2022                
+                df.loc[row, 'hybrid_or_inbred'] = 'hybrid'
+            if (temp_plot_id >= 4351.0) and (temp_plot_id <= 4394.0): # hybrid vs inbred for 2021
+                df.loc[row, 'hybrid_or_inbred'] = 'hybrid'
+            else:
+                df.loc[row, 'hybrid_or_inbred'] = 'inbred'
+
+        # add data for pedigree / variant:
+        for row in range(df.shape[0]):
+            # get plot id:
+            temp_plot_id = df.loc[row, 'Plot']
+            # get the pedigree of that corresponding plot id:
+            if df.loc[row, 'date'][0:4] == '2022': # go to 2022 df (pedigree_df_2022)
+                idx = pedigree_df_2022['Plot'].tolist().index(temp_plot_id)
+                
+                # add temp pedigree to the df:
+                temp_pedigree = pedigree_df_2022.loc[idx, 'Pedigree']
+                
+                # add temp pedigree to df:
+                df.loc[row, 'pedigree'] = temp_pedigree
+            if df.loc[row, 'date'][0:4] == '2021': # go to 2021 df (pedigree_df_2021)
+                idx = pedigree_df_2021['Plot'].tolist().index(temp_plot_id)
+                temp_pedigree = pedigree_df_2021.loc[idx, 'Pedigree']
+
+                # add temp pedigree to the df:
+                df.loc[row, 'pedigree'] = temp_pedigree                
+
+    if data_path == '2022_f54':
+        # to append hybrid/inbred, pedigree, and nitorgen treatment type for field 54.
+        df['hybrid_or_inbred'] = 'for_nitrogen_treatment'
+        df['pedigree'] = 'for_nitrogen_treatment'
+        df['nitrogen_treatment'] = None
+        nitrogen_treatment_dict = {0   : [107, 209, 305, 411, 507, 603, 703, 809, 111],
+                                   95  : [205, 301, 403, 509, 605, 707, 713, 105 ],
+                                   135 : [211, 303, 409, 501, 611, 705, 801, 103], 
+                                   175 : [207, 311, 401, 505, 609, 701, 807, 101],
+                                   215 : [203, 307, 407, 511, 601, 711, 805, 109],
+                                   255 : [201, 309, 405, 503, 607, 709, 803]}
+        for row in range(df.shape[0]):
+            # get plot id:
+            temp_plot_id = df.loc[row, 'Plot']
+            for key, value_list in nitrogen_treatment_dict.items():
+                # Check if the value is in the list
+                if temp_plot_id in value_list:
+                    print(f"Key associated with plot id {temp_plot_id}: {key}")
+                    temp_treatment = key
+
+                    # assign this treatment to nitrogen treatment column for specific row we are on in the df:
+                    df.loc[row, 'nitrogen_treatment'] = temp_treatment
+                    break  # Stop searching once the value is found
+
+                # If the value is not found, you can handle it accordingly
+                else:
+                    print(f"Plot id {temp_plot_id} not found in any list.")
+
+            
     if debug:
         print("FINAL SUMMARY")
         print("Dimensions of returned df:", df.shape)
@@ -72,6 +218,9 @@ def get_svr_features(debug=False, data_path='2022_f54'):
         print(df.tail())
         print(df.describe())
         print("Unique Dates in df:", df['date'].unique())
+        print("Columns that contain NaN values:", df.columns[df.isna().any()].tolist())
+        print("creating csv of df for debugging...")
+        df.to_csv('debugging_df_' + data_path + '.csv')
     return df
 
 def read_hyperspectral_per_plot_reflectance():
@@ -217,9 +366,9 @@ def read_ground_truth(debug=False, field="f54"):
 
 
 if __name__ == "__main__":
-    df = get_svr_features(debug=True)
-    # total_nan_count = df.isna().sum().sum()
-    # print(total_nan_count)
+    df = get_svr_features(debug=True, data_path='2022_f54')
+    total_nan_count = df.isna().sum().sum()
+    print('nan count is', total_nan_count)
 
     # read_hyperspectral_per_plot_reflectance()
 
