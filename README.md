@@ -8,3 +8,6 @@ Many-to-many LSTM to predict LAI at every timestep.
 
 How to use SVR model:
 call svr() with cv_stratify True means we will do 10 fold cross validation and make sure we have an equal proportion of hybrid and inbreds as is reflected in our existing dataset in our train and test splits.
+
+### 
+Add info about LSTM
