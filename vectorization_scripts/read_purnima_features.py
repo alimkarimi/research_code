@@ -145,19 +145,18 @@ def get_svr_features(debug=False, data_path='2022_f54'):
         # open pedigree spreadsheets:
         pedigree_df_2021 = pd.read_excel('/Volumes/depot/iot4agrs/data/students/Alim/pedigree_data/' + 'HIPS_YS_2021.xlsx')
         pedigree_df_2022 = pd.read_excel('/Volumes/depot/iot4agrs/data/students/Alim/pedigree_data/' + '2022 YS_HIPS_BCS all data.xlsx')
-        print('opened pedigree data...')
-
         
         # initialize columns for hybrid/inbred and pedigree
         df['hybrid_or_inbred'] = None
-        df['pedigree'] = None        
+        df['pedigree'] = None
+        df['nitrogen_treatment'] = 'no_nitrogen_variants_for_genotyping'       
         
         for row in range(df.shape[0]):
             # get plot id:
             temp_plot_id = df.loc[row, 'Plot']
             if (temp_plot_id >= 6351.0) and (temp_plot_id <= 6494.0): # hybrid vs inbred for 2022                
                 df.loc[row, 'hybrid_or_inbred'] = 'hybrid'
-            if (temp_plot_id >= 4351.0) and (temp_plot_id <= 4394.0): # hybrid vs inbred for 2021
+            elif (temp_plot_id >= 4351.0) and (temp_plot_id <= 4394.0): # hybrid vs inbred for 2021
                 df.loc[row, 'hybrid_or_inbred'] = 'hybrid'
             else:
                 df.loc[row, 'hybrid_or_inbred'] = 'inbred'
@@ -184,31 +183,22 @@ def get_svr_features(debug=False, data_path='2022_f54'):
 
     if data_path == '2022_f54':
         # to append hybrid/inbred, pedigree, and nitorgen treatment type for field 54.
-        df['hybrid_or_inbred'] = 'for_nitrogen_treatment'
-        df['pedigree'] = 'for_nitrogen_treatment'
+        df['hybrid_or_inbred'] = 'no_variants_for_nitrogen_treatment'
+        df['pedigree'] = 'no_variants_for_nitrogen_treatment'
         df['nitrogen_treatment'] = None
-        nitrogen_treatment_dict = {0   : [107, 209, 305, 411, 507, 603, 703, 809, 111],
-                                   95  : [205, 301, 403, 509, 605, 707, 713, 105 ],
-                                   135 : [211, 303, 409, 501, 611, 705, 801, 103], 
-                                   175 : [207, 311, 401, 505, 609, 701, 807, 101],
-                                   215 : [203, 307, 407, 511, 601, 711, 805, 109],
-                                   255 : [201, 309, 405, 503, 607, 709, 803]}
+        nitrogen_treatment_file = '/Volumes/depot/iot4agrs/data/students/Alim/nitrogen_data/nitrogen_rate.xlsx'
+        df_nitrogen_treatment = pd.read_excel(nitrogen_treatment_file)
+
         for row in range(df.shape[0]):
             # get plot id:
             temp_plot_id = df.loc[row, 'Plot']
-            for key, value_list in nitrogen_treatment_dict.items():
-                # Check if the value is in the list
-                if temp_plot_id in value_list:
-                    print(f"Key associated with plot id {temp_plot_id}: {key}")
-                    temp_treatment = key
-
-                    # assign this treatment to nitrogen treatment column for specific row we are on in the df:
-                    df.loc[row, 'nitrogen_treatment'] = temp_treatment
-                    break  # Stop searching once the value is found
-
-                # If the value is not found, you can handle it accordingly
-                else:
-                    print(f"Plot id {temp_plot_id} not found in any list.")
+            
+            # get nitrogen treatment for that plot from df_nitrogen_treatment
+            temp_nitrogen_rate = df_nitrogen_treatment[df_nitrogen_treatment['Plot'] == temp_plot_id]['Nit_rate']
+            
+            # add the nitrogen tretment to the dataframe we want to return
+            df.loc[row, 'nitrogen_treatment'] = int(temp_nitrogen_rate.values)
+            
 
             
     if debug:
@@ -221,6 +211,9 @@ def get_svr_features(debug=False, data_path='2022_f54'):
         print("Columns that contain NaN values:", df.columns[df.isna().any()].tolist())
         print("creating csv of df for debugging...")
         df.to_csv('debugging_df_' + data_path + '.csv')
+        print("Final shape of data:", df.shape)
+        print("Columns in df:", df.columns)
+
     return df
 
 def read_hyperspectral_per_plot_reflectance():
@@ -359,6 +352,7 @@ def read_ground_truth(debug=False, field="f54"):
         print(df.tail())
         print(df.describe())
         print(df['date'].unique())
+        print("Final df shape:", df.shape)
         
 
     return df
