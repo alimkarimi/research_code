@@ -6,4 +6,5 @@
 #########################
 *.pyc
 
-# another class of things to ignore #
+# ipynb checkpoints #
+*.ipynb_checkpoints/
