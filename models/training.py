@@ -1,4 +1,4 @@
-from models import LSTM_concat_based, RNN
+from models import RNN
 
 import torch
 import torch.nn as nn
@@ -13,7 +13,6 @@ criterion = nn.MSELoss()
 batch_size = 1
 
 # instantiate model
-#lstm = LSTM_concat_based(input_size = 17, hidden_size=100, cell_size=100)
 rnn  = RNN(batch_size = batch_size, concat_based_LSTM = True, addition_based_LSTM = False,
            hidden_size = 100, cell_size = 100) # lstm gets instantiated inside RNN class.
 rnn = rnn.double()
@@ -61,7 +60,7 @@ print("Total number of parameters: {}".format(total_params))
 
 
 for n, testing_sample in enumerate(testing_datalodaer):
-    features, GT = timeseries
+    features, GT = testing_sample
 
     features = torch.squeeze(features, 0)
     features = features.double()
