@@ -37,207 +37,215 @@ from dataloading_scripts.read_purnima_features import get_svr_features
 # I will get an import error. However:
 # from vectorization_scripts.read_purnima_features import get_svr_features works. Why??
 
-def lstm():
-    input_size = 10
-    hidden_size = 5
 
-    num_layers=3
-    lstm_model = torch.nn.LSTM(input_size, hidden_size, num_layers)
 
-    random_data = torch.rand((1, 3, 10))
+class LSTM_addition_based(nn.Module):
+    """
+    In an LSTM, hidden state is for immediate, short term memory while cell state is for 
+    long term memory.
 
-    output = lstm_model(random_data)
-    print(output[0].shape)
-    print((output[1][0].shape))
+    Equations from torch documentation:
+    input_gate = sigmoid(Wii @ xt + bii + Whi @ ht-1 + bhi) = it                        #A
+    forget_gate = sigmoid(Wif @ xt + bif + Whf @ ht-1 + bhf) = ft                       #B
+    cell_gate = tanh(Wig @ xt + big + Whg @ ht-1 + bhg) = gt                            #C
+    output_gate = sigmoid(Wio @ xt + bio + Who @ ht-1 + bho) = ot                       #D
+    cell_state = ft * ct-1 + it * gt = ct                                               #E
+    hidden_state = ot * tanh(ct)                                                        #F
 
-    class LSTM_addition_based(nn.Module):
+    but, an LSTM paper from Google (https://arxiv.org/pdf/1402.1128.pdf), has some more details in the 
+    equations. Namely,
+
+    input_gate =  sigmoid(Wix @ xt + Wim @ mt-1 + Wic @ ct-1 + bi) = it                 #G
+    forget_gate = sigmoid(Wfx @ xt + Wmf @ mt-1 + Wcf @ ct - 1 + bf) = ft               #H
+    cell_activation_vector = ft * ct-1 + it * tanh(Wcx @ xt + Wcm @ mt-1 + bc) = ct     #I
+    Note, this cell_activation_vector is effectively the cell_state. The torch and
+    LSTM paper terminology is differing. 
+
+    output_gate = sigmoid(Wox @ xt + Wom @ mt-1 + Woc @ ct-1 + bo) = ot                 #J
+    cell_output_activation_vetor = ot * tanh(ct) = mt . Side note: this looks exactly  #K 
+    like the equation for hidden_state in the torch documentation. So, I think we should
+    be able to infer that hidden_state is the same as cell_output_activation_vector in 
+    this LSTM paper.
+    output = Wym @ mt + by                                                              #L
+
+    Question: Does the pytorch documentation combine the cell state and memory state into 
+    one "hidden" state?
+
+    Yet another good resource on LSTMs is this blog: https://colah.github.io/posts/2015-08-Understanding-LSTMs/
+    I have seen it referenced by both Dr. Bouman and Dr. Inouye. I see it has good details about the mathematics.
+    However, one diffrence in this blog's equations from the other 2 sets of equations above is the input features
+    are concatenated, not added. This changes the dimensions of all the weight matrices.
+
+    """
+    def __init__(self, input_size, hidden_size, cell_size):
         """
-        In an LSTM, hidden state is for immediate, short term memory while cell state is for 
-        long term memory.
+        Using matrix notation from LSTM paper referenced above.
+        Note, that because ht = ot * tanh(ct), where * denotes element wise multiplication 
+        (Hadamard product), the cell state size and hidden size state must be the same.
+        """
+        super(LSTM_addition_based, self).__init__()
+        self.input_size = input_size # size of xt
+        self.hidden_size = hidden_size # size of ht
+        self.cell_size = cell_size # size of ct
+        #assert(hidden_size == cell_size, "hidden and cell size must be the same...")
 
-        Equations from torch documentation:
-        input_gate = sigmoid(Wii @ xt + bii + Whi @ ht-1 + bhi) = it                        #A
-        forget_gate = sigmoid(Wif @ xt + bif + Whf @ ht-1 + bhf) = ft                       #B
-        cell_gate = tanh(Wig @ xt + big + Whg @ ht-1 + bhg) = gt                            #C
-        output_gate = sigmoid(Wio @ xt + bio + Who @ ht-1 + bho) = ot                       #D
-        cell_state = ft * ct-1 + it * gt = ct                                               #E
-        hidden_state = ot * tanh(ct)                                                        #F
+        # learnable matrices for input gate:
+        self.Wix = nn.Linear(self.input_size, self.hidden_size)
+        self.Wih = nn.Linear(self.hidden_size, self.hidden_size)
+        self.Wic = nn.Linear(self.cell_size, self.hidden_size)
+
+        # learnable matrices for forget gate:
+        self.Wfx = nn.Linear(self.input_size, self.hidden_size)
+        self.Wfh = nn.Linear(self.hidden_size, self.hidden_size)
+        self.Wfc = nn.Linear(self.cell_size, self.hidden_size)
+
+        # learnable matrices for cell state / cell activation vector:
+        self.Wcx = nn.Linear(self.input_size, self.hidden_size)
+        self.Wch = nn.Linear(self.input_size, self.hidden_size)
         
-        but, an LSTM paper from Google (https://arxiv.org/pdf/1402.1128.pdf), has some more details in the 
-        equations. Namely,
-
-        input_gate =  sigmoid(Wix @ xt + Wim @ mt-1 + Wic @ ct-1 + bi) = it                 #G
-        forget_gate = sigmoid(Wfx @ xt + Wmf @ mt-1 + Wcf @ ct - 1 + bf) = ft               #H
-        cell_activation_vector = ft * ct-1 + it * tanh(Wcx @ xt + Wcm @ mt-1 + bc) = ct     #I
-        Note, this cell_activation_vector is effectively the cell_state. The torch and
-        LSTM paper terminology is differing. 
-
-        output_gate = sigmoid(Wox @ xt + Wom @ mt-1 + Woc @ ct-1 + bo) = ot                 #J
-        cell_output_activation_vetor = ot * tanh(ct) = mt . Side note: this looks exactly  #K 
-        like the equation for hidden_state in the torch documentation. So, I think we should
-        be able to infer that hidden_state is the same as cell_output_activation_vector in 
-        this LSTM paper.
-        output = Wym @ mt + by                                                              #L
-
-        Question: Does the pytorch documentation combine the cell state and memory state into 
-        one "hidden" state?
-
-        Yet another good resource on LSTMs is this blog: https://colah.github.io/posts/2015-08-Understanding-LSTMs/
-        I have seen it referenced by both Dr. Bouman and Dr. Inouye. I see it has good details about the mathematics.
-        However, one diffrence in this blog's equations from the other 2 sets of equations above is the input features
-        are concatenated, not added. This changes the dimensions of all the weight matrices.
+        # learnable matrices for output gate
+        self.Wox = nn.Linear(self.input_size, self.hidden_size)
+        self.Woh = nn.Linear(self.hidden_size, self.hidden_size)
+        self.Woc = nn.Linear(self.cell_size, self.hidden_size)
         
-        """
-        def __init__(self, input_size, hidden_size, cell_size):
-            """
-            Using matrix notation from LSTM paper referenced above.
-            Note, that because ht = ot * tanh(ct), where * denotes element wise multiplication 
-            (Hadamard product), the cell state size and hidden size state must be the same.
-            """
-            super(LSTM_addition_based, self).__init__()
-            self.input_size = input_size # size of xt
-            self.hidden_size = hidden_size # size of ht
-            self.cell_size = cell_size # size of ct
-            assert(hidden_size == cell_size, "hidden and cell size must be the same...")
-
-            # learnable matrices for input gate:
-            self.Wix = nn.Linear(self.input_size, self.hidden_size)
-            self.Wih = nn.Linear(self.hidden_size, self.hidden_size)
-            self.Wic = nn.Linear(self.cell_size, self.hidden_size)
-
-            # learnable matrices for forget gate:
-            self.Wfx = nn.Linear(self.input_size, self.hidden_size)
-            self.Wfh = nn.Linear(self.hidden_size, self.hidden_size)
-            self.Wfc = nn.Linear(self.cell_size, self.hidden_size)
-
-            # learnable matrices for cell state / cell activation vector:
-            self.Wcx = nn.Linear(self.input_size, self.hidden_size)
-            self.Wch = nn.Linear(self.input_size, self.hidden_size)
-            
-            # learnable matrices for output gate
-            self.Wox = nn.Linear(self.input_size, self.hidden_size)
-            self.Woh = nn.Linear(self.hidden_size, self.hidden_size)
-            self.Woc = nn.Linear(self.cell_size, self.hidden_size)
-            
-            # learnable matrices for output content:
-            self.Wy = nn.Linear(self.input_size, self.hidden_size)
-            
-            # activations
-            self.sigmoid = nn.Sigmoid()
-            
-            self.tanh = nn.Tanh()
-            
-        def forward(self,xt, ht_minus_1, ct_minus_1):
-            input_gate = self.sigmoid(self.Wix(xt) +  self.Wih(ht_minus_1) + self.Wic(ct_minus_1))
-            
-            forget_gate = self.sigmoid(self.Wfx(xt) + self.Wfh(ht_minus_1) + self.Wfc(ct_minus_1))
-
-            ct = forget_gate * ct_minus_1 + input_gate * self.tanh(self.Wcx(xt) + self.Wch(ht_minus_1))
-
-            output_gate = self.sigmoid(self.Wox(xt) + self.Woh(ht_minus_1) + self.Woc(ct_minus_1))
-            ht = output_gate * self.tanh(ct) # output gate modulates the amount of memory content exposure.
-            # memory content exposure is in ct
-            
-            output = self.Wy(ht)
+        # learnable matrices for output content:
+        self.Wy = nn.Linear(self.input_size, self.hidden_size)
         
-            return output, ht, ct
+        # activations
+        self.sigmoid = nn.Sigmoid()
+        
+        self.tanh = nn.Tanh()
+        
+    def forward(self,xt, ht_minus_1, ct_minus_1):
+        input_gate = self.sigmoid(self.Wix(xt) +  self.Wih(ht_minus_1) + self.Wic(ct_minus_1))
+        
+        forget_gate = self.sigmoid(self.Wfx(xt) + self.Wfh(ht_minus_1) + self.Wfc(ct_minus_1))
 
-    class LSTM_concat_based(nn.Module):
+        ct = forget_gate * ct_minus_1 + input_gate * self.tanh(self.Wcx(xt) + self.Wch(ht_minus_1))
+
+        output_gate = self.sigmoid(self.Wox(xt) + self.Woh(ht_minus_1) + self.Woc(ct_minus_1))
+        ht = output_gate * self.tanh(ct) # output gate modulates the amount of memory content exposure.
+        # memory content exposure is in ct
+        
+        output = self.Wy(ht)
+
+        return output, ht, ct
+
+class LSTM_concat_based(nn.Module):
+    """
+    This implemetation of an LSTM is based on concatenation of input (xt) and hidden (ht) vectors.
+
+    Details of this implementation can be found in:
+    https://colah.github.io/posts/2015-08-Understanding-LSTMs/
+    I have seen it referenced by both Dr. Bouman and Dr. Inouye. I see it has good details about the mathematics.
+    However, one diffrence in this blog's equations from the other 2 sets of equations above is the input features
+    are concatenated, not added. This changes the dimensions of all the weight matrices.
+    """
+    def __init__(self, input_size, hidden_size, cell_size):
         """
-        This implemetation of an LSTM is based on concatenation of input (xt) and hidden (ht) vectors.
-
-        Details of this implementation can be found in:
-        https://colah.github.io/posts/2015-08-Understanding-LSTMs/
-        I have seen it referenced by both Dr. Bouman and Dr. Inouye. I see it has good details about the mathematics.
-        However, one diffrence in this blog's equations from the other 2 sets of equations above is the input features
-        are concatenated, not added. This changes the dimensions of all the weight matrices.
+        Using matrix notation from LSTM paper referenced above.
+        Note, that because ht = ot * tanh(ct), where * denotes element wise multiplication 
+        (Hadamard product), the cell state size and hidden size state must be the same.
         """
-        def __init__(self, input_size, hidden_size, cell_size):
-            """
-            Using matrix notation from LSTM paper referenced above.
-            Note, that because ht = ot * tanh(ct), where * denotes element wise multiplication 
-            (Hadamard product), the cell state size and hidden size state must be the same.
-            """
-            super(LSTM_concat_based, self).__init__()
-            self.input_size = input_size
-            self.hidden_size = hidden_size
-            self.cell_size = cell_size
-            # first step is to decide which information to throw away from the cell state.
-            # this is done by ft, the forget gate layer. we will learn a 
-            # linear transformation, Wf, for this:
-            self.Wf = nn.Linear(input_size + hidden_size, cell_size)
-            self.sigmoid = nn.Sigmoid()
+        super(LSTM_concat_based, self).__init__()
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        self.cell_size = cell_size
+        # first step is to decide which information to throw away from the cell state.
+        # this is done by ft, the forget gate layer. we will learn a 
+        # linear transformation, Wf, for this:
+        self.Wf = nn.Linear(input_size + hidden_size, cell_size)
+        self.sigmoid = nn.Sigmoid()
 
-            # second step is to decide what we will store in the cell state. First, the input gate
-            # layer decides which values we will update, then, a tanh layer creates 
-            # new candidate values that should be added to create an update to the 
-            # cell state:
-            self.Wi = nn.Linear(input_size + hidden_size, cell_size)
-            self.Wc = nn.Linear(input_size + hidden_size, cell_size)
-            self.tanh = nn.Tanh()
+        # second step is to decide what we will store in the cell state. First, the input gate
+        # layer decides which values we will update, then, a tanh layer creates 
+        # new candidate values that should be added to create an update to the 
+        # cell state:
+        self.Wi = nn.Linear(input_size + hidden_size, cell_size)
+        self.Wc = nn.Linear(input_size + hidden_size, cell_size)
+        self.tanh = nn.Tanh()
 
-            # To actually update the cell state, we element-wise multiply the forget gate
-            # by the previous cell state (i.e, tell the previous cell what to forget)
-            # and we also add the element wise product of the input gate's output 
-            # to the candidate cell state. It's like saying "forget these values" and "add these!".
-            # (at least in my interpretation of the math :)) . The actual math for this will
-            # be done in the forward operation. There isn't anything learnable here.
+        # To actually update the cell state, we element-wise multiply the forget gate
+        # by the previous cell state (i.e, tell the previous cell what to forget)
+        # and we also add the element wise product of the input gate's output 
+        # to the candidate cell state. It's like saying "forget these values" and "add these!".
+        # (at least in my interpretation of the math :)) . The actual math for this will
+        # be done in the forward operation. There isn't anything learnable here.
 
-            # Then, we decide what to actually output as the final hidden layer.
-            # It'll be based on the updated cell state, but controlled by the output gate.
-            self.Wo = nn.Linear(input_size + hidden_size, cell_size)
+        # Then, we decide what to actually output as the final hidden layer.
+        # It'll be based on the updated cell state, but controlled by the output gate.
+        self.Wo = nn.Linear(input_size + hidden_size, cell_size)
 
-            # the hidden state will be the result of a sigmoid applied to Wo,
-            # then element wise multiplied by a tanh applied to ct! 
+        # the hidden state will be the result of a sigmoid applied to Wo,
+        # then element wise multiplied by a tanh applied to ct! 
 
-        def forward(self, xt, ct_minus_1, ht_minus_1):
-            feature_concat = torch.concat([ht_minus_1, xt])
+    def forward(self, xt, ct_minus_1, ht_minus_1):
+        print('shape of xt:', xt.shape)
+        print('shape of ct_minus_1:', ct_minus_1.shape)
+        print('shape of ht_minus_1', ht_minus_1.shape)
+        feature_concat = torch.concat([ht_minus_1, xt])
+        feature_concat = feature_concat.double()
 
-            # forget gate - what we want to forget from cell state
-            ft = self.sigmoid(self.Wf(feature_concat))
-
-            # input gate - what we want to add to cell state
-            it = self.sigmoid(self.Wi(feature_concat))
-
-            # candidate cell update
-            ct_candidate = self.tanh(self.Wc(feature_concat))
-
-            # update cell state
-            ct = ft * ct_minus_1 + it * ct_candidate
-
-            # output gate - what we keep from the candidate cell state:
-            ot = self.sigmoid(self.Wo(feature_concat))
-
-            # update hidden state:
-            ht = ot * self.tanh(ct)
-
-            return ct, ht
+        print('done w/ concat:', feature_concat.shape)
+        print('type of feature_concat', feature_concat.dtype)
 
 
-    class RNN(nn.Module):
-        def __init__(self, concat_based_LSTM, addition_based_LSTM):
-            super(RNN, self).__init__()
-            if addition_based_LSTM:
-                self.lstm = LSTM_addition_based(input_size= 10, hidden_size= 100, cell_size=100)
-            if concat_based_LSTM:
-                self.lstm = LSTM_concat_based(input_size=10, hidden_size = 100, cell_size=100)
 
-            self.fc = nn.Linear(self.lstm.hidden_size, 1) # fc layer to do prediction of LAI at every step.
+        # forget gate - what we want to forget from cell state
+        ft = self.sigmoid(self.Wf(feature_concat))
 
-        def forward(self, timeseries):
-            # timeseries will have to come from the pytorch dataloader. It is a series of xt where t = {0, 1, ... k-1, k}, where k 
-            # is the number of observations in the time series.
-            for n, xt in enumerate(timeseries):
-                if n == 0:
-                    ht_minus_1 = torch.zeros((xt.shape[1] + self.hidden_size))
-                    ct_minus_1 = torch.zeros((self.cell_size))
-                    ht, ct = self.lstm(xt, ct_minus_1, ht_minus_1)
-                    pred = self.fc(ht)
-                else:
-                    ht, ct = self.lstm(xt, ct_minus_1, ht_minus_1)
-                    pred = self.fc(ht)
-            
-            return ct, ht, pred
+        # input gate - what we want to add to cell state
+        it = self.sigmoid(self.Wi(feature_concat))
+
+        # candidate cell update
+        ct_candidate = self.tanh(self.Wc(feature_concat))
+
+        # update cell state
+        ct = ft * ct_minus_1 + it * ct_candidate
+
+        # output gate - what we keep from the candidate cell state:
+        ot = self.sigmoid(self.Wo(feature_concat))
+
+        # update hidden state:
+        ht = ot * self.tanh(ct)
+
+        return ct, ht
+
+
+class RNN(nn.Module):
+    """
+    This RNN class wraps an instantiated LSTM class.
+    """
+    def __init__(self, concat_based_LSTM : bool, addition_based_LSTM : bool):
+        super(RNN, self).__init__()
+        if addition_based_LSTM:
+            self.lstm = LSTM_addition_based(input_size= 17, hidden_size= 100, cell_size=100)
+            print('instantiating addition based LSTM')
+        if concat_based_LSTM:
+            self.lstm = LSTM_concat_based(input_size=17, hidden_size = 100, cell_size=100)
+            print('instantiating concat based LSTM')
+
+        self.fc = nn.Linear(self.lstm.hidden_size, 1) # fc layer to do prediction of LAI at every step.
+
+    def forward(self, timeseries):
+        # timeseries will have to come from the pytorch dataloader. It is a series of xt where t = {0, 1, ... k-1, k}, where k 
+        # is the number of observations in the time series.
+        predictions_in_series = torch.empty((timeseries.shape[0],1)) # length of timeseries x 1
+        for n, xt in enumerate(timeseries):
+            if n == 0:
+                print('xt shape:', xt.shape)
+                print('lstm.hidden_size', self.lstm.hidden_size)
+                ht_minus_1 = torch.zeros((self.lstm.hidden_size)) # size 100
+                ct_minus_1 = torch.zeros((self.lstm.cell_size)) # size 100
+                ht, ct = self.lstm(xt, ct_minus_1, ht_minus_1)
+                pred = self.fc(ht)
+                predictions_in_series[n] = pred
+            else:
+                ht, ct = self.lstm(xt, ct_minus_1, ht_minus_1)
+                pred = self.fc(ht)
+                predictions_in_series[n] = pred
+        
+        return ct, ht, pred, predictions_in_series # prediction is final prediciton. predictions_in_series is every timestep's prediction.
 
 class statistical_model():
     def __init__(self, debug=False, produce_plot=False, produce_metrics=True, cross_validation=False,

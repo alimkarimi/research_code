@@ -1,7 +1,9 @@
 import pandas as pd
 import numpy as np
 
-from read_purnima_features import get_svr_features
+import sys
+sys.path.append('..') # need this to access get_svr_features from training.py
+from dataloading_scripts.read_purnima_features import get_svr_features
 
 import torch
 
@@ -98,6 +100,9 @@ class FeaturesDataset(torch.utils.data.Dataset):
         metadata = data[['Plot', 'date', 'hybrid_or_inbred', 'pedigree', 'nitrogen_treatment']]
 
         # convert to torch tensors
+        ground_truth_LAI = np.array(ground_truth_LAI, dtype = np.float32)
+        train_or_test_features = np.array(train_or_test_features, dtype = np.float32)
+
         ground_truth_LAI = torch.tensor(ground_truth_LAI)
         train_or_test_features = torch.tensor(train_or_test_features)
 
