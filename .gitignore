@@ -8,3 +8,7 @@
 
 # ipynb checkpoints #
 *.ipynb_checkpoints/
+
+# test folder # 
+test_folder/*
+*test_folder*
