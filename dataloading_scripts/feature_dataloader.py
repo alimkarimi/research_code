@@ -100,11 +100,11 @@ class FeaturesDataset(torch.utils.data.Dataset):
         metadata = data[['Plot', 'date', 'hybrid_or_inbred', 'pedigree', 'nitrogen_treatment']]
 
         # convert to torch tensors
-        ground_truth_LAI = np.array(ground_truth_LAI, dtype = np.float32)
-        train_or_test_features = np.array(train_or_test_features, dtype = np.float32)
+        ground_truth_LAI = np.array(ground_truth_LAI, dtype = np.float64) # for compatibility with pytorch model
+        train_or_test_features = np.array(train_or_test_features, dtype = np.float64) # for compatibility with pytorch model
 
-        ground_truth_LAI = torch.tensor(ground_truth_LAI)
-        train_or_test_features = torch.tensor(train_or_test_features)
+        ground_truth_LAI = torch.tensor(ground_truth_LAI, dtype=torch.float64)
+        train_or_test_features = torch.tensor(train_or_test_features, dtype=torch.float64)
 
         # returns data in the format batch_size x num_dates x num_features.
         # for example, if batch size is 1, and 2021 HIPS has 4 observations with 17 features, the returned 

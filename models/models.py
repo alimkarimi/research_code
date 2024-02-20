@@ -180,16 +180,11 @@ class LSTM_concat_based(nn.Module):
         # then element wise multiplied by a tanh applied to ct! 
 
     def forward(self, xt, ct_minus_1, ht_minus_1):
-        print('shape of xt:', xt.shape)
-        print('shape of ct_minus_1:', ct_minus_1.shape)
-        print('shape of ht_minus_1', ht_minus_1.shape)
+        # print('shape of xt:', xt.shape)
+        # print('shape of ct_minus_1:', ct_minus_1.shape)
+        # print('shape of ht_minus_1', ht_minus_1.shape)
         feature_concat = torch.concat([ht_minus_1, xt])
         feature_concat = feature_concat.double()
-
-        print('done w/ concat:', feature_concat.shape)
-        print('type of feature_concat', feature_concat.dtype)
-
-
 
         # forget gate - what we want to forget from cell state
         ft = self.sigmoid(self.Wf(feature_concat))
@@ -216,13 +211,18 @@ class RNN(nn.Module):
     """
     This RNN class wraps an instantiated LSTM class.
     """
-    def __init__(self, concat_based_LSTM : bool, addition_based_LSTM : bool):
+    def __init__(self, batch_size : int, concat_based_LSTM : bool, addition_based_LSTM : bool, debug=False,
+                 hidden_size = 100, cell_size = 100):
         super(RNN, self).__init__()
+        self.debug=debug
+        self.batch_size = batch_size
+        self.hidden_size = hidden_size
+        self.cell_size = cell_size
         if addition_based_LSTM:
-            self.lstm = LSTM_addition_based(input_size= 17, hidden_size= 100, cell_size=100)
+            self.lstm = LSTM_addition_based(input_size= 17, hidden_size= hidden_size, cell_size=cell_size)
             print('instantiating addition based LSTM')
         if concat_based_LSTM:
-            self.lstm = LSTM_concat_based(input_size=17, hidden_size = 100, cell_size=100)
+            self.lstm = LSTM_concat_based(input_size=17, hidden_size = hidden_size, cell_size=cell_size)
             print('instantiating concat based LSTM')
 
         self.fc = nn.Linear(self.lstm.hidden_size, 1) # fc layer to do prediction of LAI at every step.
@@ -230,11 +230,12 @@ class RNN(nn.Module):
     def forward(self, timeseries):
         # timeseries will have to come from the pytorch dataloader. It is a series of xt where t = {0, 1, ... k-1, k}, where k 
         # is the number of observations in the time series.
-        predictions_in_series = torch.empty((timeseries.shape[0],1)) # length of timeseries x 1
+        predictions_in_series = torch.empty((timeseries.shape[0], self.batch_size), dtype=torch.float64) # length of timeseries x batch_size
         for n, xt in enumerate(timeseries):
             if n == 0:
-                print('xt shape:', xt.shape)
-                print('lstm.hidden_size', self.lstm.hidden_size)
+                if self.debug:
+                    print('xt shape:', xt.shape)
+                    print('lstm.hidden_size', self.lstm.hidden_size)
                 ht_minus_1 = torch.zeros((self.lstm.hidden_size)) # size 100
                 ct_minus_1 = torch.zeros((self.lstm.cell_size)) # size 100
                 ht, ct = self.lstm(xt, ct_minus_1, ht_minus_1)
