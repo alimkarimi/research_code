@@ -14,4 +14,5 @@ test_folder/*
 *test_folder*
 
 # .smbdelete # 
-.smbdelete
+.smbdelete*
+/.smbdelete*
