@@ -19,7 +19,7 @@ from matplotlib import pyplot as plt
 import sys
 #sys.path.append('/Volumes/depot/iot4agrs/data/students/Alim/research_code') # this works
 sys.path.append('..')
-from vectorization_scripts.read_purnima_features import get_svr_features
+from dataloading_scripts.read_purnima_features import get_svr_features
 
 
 # Note on imports: this also works:
@@ -50,7 +50,7 @@ def lstm():
     print(output[0].shape)
     print((output[1][0].shape))
 
-    class LSTM(nn.Module):
+    class LSTM_addition_based(nn.Module):
         """
         In an LSTM, hidden state is for immediate, short term memory while cell state is for 
         long term memory.
@@ -82,6 +82,10 @@ def lstm():
         Question: Does the pytorch documentation combine the cell state and memory state into 
         one "hidden" state?
 
+        Yet another good resource on LSTMs is this blog: https://colah.github.io/posts/2015-08-Understanding-LSTMs/
+        I have seen it referenced by both Dr. Bouman and Dr. Inouye. I see it has good details about the mathematics.
+        However, one diffrence in this blog's equations from the other 2 sets of equations above is the input features
+        are concatenated, not added. This changes the dimensions of all the weight matrices.
         
         """
         def __init__(self, input_size, hidden_size, cell_size):
@@ -90,7 +94,7 @@ def lstm():
             Note, that because ht = ot * tanh(ct), where * denotes element wise multiplication 
             (Hadamard product), the cell state size and hidden size state must be the same.
             """
-            super(LSTM, self).__init__()
+            super(LSTM_addition_based, self).__init__()
             self.input_size = input_size # size of xt
             self.hidden_size = hidden_size # size of ht
             self.cell_size = cell_size # size of ct
@@ -123,7 +127,7 @@ def lstm():
             
             self.tanh = nn.Tanh()
             
-        def forward(self, xt, ht_minus_1, ct_minus_1):
+        def forward(self,xt, ht_minus_1, ct_minus_1):
             input_gate = self.sigmoid(self.Wix(xt) +  self.Wih(ht_minus_1) + self.Wic(ct_minus_1))
             
             forget_gate = self.sigmoid(self.Wfx(xt) + self.Wfh(ht_minus_1) + self.Wfc(ct_minus_1))
@@ -135,18 +139,105 @@ def lstm():
             # memory content exposure is in ct
             
             output = self.Wy(ht)
-            
+        
             return output, ht, ct
 
+    class LSTM_concat_based(nn.Module):
+        """
+        This implemetation of an LSTM is based on concatenation of input (xt) and hidden (ht) vectors.
+
+        Details of this implementation can be found in:
+        https://colah.github.io/posts/2015-08-Understanding-LSTMs/
+        I have seen it referenced by both Dr. Bouman and Dr. Inouye. I see it has good details about the mathematics.
+        However, one diffrence in this blog's equations from the other 2 sets of equations above is the input features
+        are concatenated, not added. This changes the dimensions of all the weight matrices.
+        """
+        def __init__(self, input_size, hidden_size, cell_size):
+            """
+            Using matrix notation from LSTM paper referenced above.
+            Note, that because ht = ot * tanh(ct), where * denotes element wise multiplication 
+            (Hadamard product), the cell state size and hidden size state must be the same.
+            """
+            super(LSTM_concat_based, self).__init__()
+            self.input_size = input_size
+            self.hidden_size = hidden_size
+            self.cell_size = cell_size
+            # first step is to decide which information to throw away from the cell state.
+            # this is done by ft, the forget gate layer. we will learn a 
+            # linear transformation, Wf, for this:
+            self.Wf = nn.Linear(input_size + hidden_size, cell_size)
+            self.sigmoid = nn.Sigmoid()
+
+            # second step is to decide what we will store in the cell state. First, the input gate
+            # layer decides which values we will update, then, a tanh layer creates 
+            # new candidate values that should be added to create an update to the 
+            # cell state:
+            self.Wi = nn.Linear(input_size + hidden_size, cell_size)
+            self.Wc = nn.Linear(input_size + hidden_size, cell_size)
+            self.tanh = nn.Tanh()
+
+            # To actually update the cell state, we element-wise multiply the forget gate
+            # by the previous cell state (i.e, tell the previous cell what to forget)
+            # and we also add the element wise product of the input gate's output 
+            # to the candidate cell state. It's like saying "forget these values" and "add these!".
+            # (at least in my interpretation of the math :)) . The actual math for this will
+            # be done in the forward operation. There isn't anything learnable here.
+
+            # Then, we decide what to actually output as the final hidden layer.
+            # It'll be based on the updated cell state, but controlled by the output gate.
+            self.Wo = nn.Linear(input_size + hidden_size, cell_size)
+
+            # the hidden state will be the result of a sigmoid applied to Wo,
+            # then element wise multiplied by a tanh applied to ct! 
+
+        def forward(self, xt, ct_minus_1, ht_minus_1):
+            feature_concat = torch.concat([ht_minus_1, xt])
+
+            # forget gate - what we want to forget from cell state
+            ft = self.sigmoid(self.Wf(feature_concat))
+
+            # input gate - what we want to add to cell state
+            it = self.sigmoid(self.Wi(feature_concat))
+
+            # candidate cell update
+            ct_candidate = self.tanh(self.Wc(feature_concat))
+
+            # update cell state
+            ct = ft * ct_minus_1 + it * ct_candidate
+
+            # output gate - what we keep from the candidate cell state:
+            ot = self.sigmoid(self.Wo(feature_concat))
+
+            # update hidden state:
+            ht = ot * self.tanh(ct)
+
+            return ct, ht
+
+
     class RNN(nn.Module):
-        def __init__(self):
+        def __init__(self, concat_based_LSTM, addition_based_LSTM):
             super(RNN, self).__init__()
-            self.lstm = LSTM(input_size= 10, hidden_size= 100, cell_size=100)
+            if addition_based_LSTM:
+                self.lstm = LSTM_addition_based(input_size= 10, hidden_size= 100, cell_size=100)
+            if concat_based_LSTM:
+                self.lstm = LSTM_concat_based(input_size=10, hidden_size = 100, cell_size=100)
 
-        def forward(self, x):
+            self.fc = nn.Linear(self.lstm.hidden_size, 1) # fc layer to do prediction of LAI at every step.
 
+        def forward(self, timeseries):
+            # timeseries will have to come from the pytorch dataloader. It is a series of xt where t = {0, 1, ... k-1, k}, where k 
+            # is the number of observations in the time series.
+            for n, xt in enumerate(timeseries):
+                if n == 0:
+                    ht_minus_1 = torch.zeros((xt.shape[1] + self.hidden_size))
+                    ct_minus_1 = torch.zeros((self.cell_size))
+                    ht, ct = self.lstm(xt, ct_minus_1, ht_minus_1)
+                    pred = self.fc(ht)
+                else:
+                    ht, ct = self.lstm(xt, ct_minus_1, ht_minus_1)
+                    pred = self.fc(ht)
             
-            return 0
+            return ct, ht, pred
 
 class statistical_model():
     def __init__(self, debug=False, produce_plot=False, produce_metrics=True, cross_validation=False,
