@@ -12,3 +12,6 @@
 # test folder # 
 test_folder/*
 *test_folder*
+
+# .smbdelete # 
+.smbdelete
