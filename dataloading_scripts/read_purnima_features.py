@@ -44,8 +44,9 @@ def get_svr_features(debug=False, data_path='2022_f54'):
 
 
     """
-    base_path = '/Volumes/iot4agrs/data/students/Alim/data_from_Purnima/Features/'
+    #base_path = '/Volumes/iot4agrs/data/students/Alim/data_from_Purnima/Features/'
     # for some reason, sometimes I need to have base_path be /Volumes/depot/iot4agrs/ ...
+    base_path = '/Users/alim/Documents/prototyping/research_lab/data_from_Purnima/Features/'
 
     if data_path == 'hips_both_years' or data_path == 'hips_2022':
         path_w_env = 'Final_Features/2021_2022_HIPS/LiDAR_and_spectral_with_envi_variables/'
@@ -143,8 +144,10 @@ def get_svr_features(debug=False, data_path='2022_f54'):
         # below, we add data about hybrid vs inbred and pedigree (i.e, variant). This is only relevant for HIPS.
 
         # open pedigree spreadsheets:
-        pedigree_df_2021 = pd.read_excel('/Volumes/depot/iot4agrs/data/students/Alim/pedigree_data/' + 'HIPS_YS_2021.xlsx')
-        pedigree_df_2022 = pd.read_excel('/Volumes/depot/iot4agrs/data/students/Alim/pedigree_data/' + '2022 YS_HIPS_BCS all data.xlsx')
+        # pedigree_df_2021 = pd.read_excel('/Volumes/depot/iot4agrs/data/students/Alim/pedigree_data/' + 'HIPS_YS_2021.xlsx')
+        # pedigree_df_2022 = pd.read_excel('/Volumes/depot/iot4agrs/data/students/Alim/pedigree_data/' + '2022 YS_HIPS_BCS all data.xlsx')
+        pedigree_df_2021 = pd.read_excel('/Users/alim/Documents/prototyping/research_lab/pedigree_data/' + 'HIPS_YS_2021.xlsx')
+        pedigree_df_2022 = pd.read_excel('/Users/alim/Documents/prototyping/research_lab/pedigree_data/' + '2022 YS_HIPS_BCS all data.xlsx')
         
         # initialize columns for hybrid/inbred and pedigree
         df['hybrid_or_inbred'] = None
@@ -186,7 +189,7 @@ def get_svr_features(debug=False, data_path='2022_f54'):
         df['hybrid_or_inbred'] = 'no_variants_for_nitrogen_treatment'
         df['pedigree'] = 'no_variants_for_nitrogen_treatment'
         df['nitrogen_treatment'] = None
-        nitrogen_treatment_file = '/Volumes/depot/iot4agrs/data/students/Alim/nitrogen_data/nitrogen_rate.xlsx'
+        nitrogen_treatment_file = '/Users/alim/Documents/prototyping/research_lab/nitrogen_data/nitrogen_rate.xlsx'
         df_nitrogen_treatment = pd.read_excel(nitrogen_treatment_file)
 
         for row in range(df.shape[0]):
