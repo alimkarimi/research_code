@@ -14,7 +14,6 @@ import numpy as np
 
 from sklearn.metrics import r2_score, mean_squared_error
 
-
 epochs = 20
 criterion = nn.MSELoss()
 batch_size = 1
@@ -23,8 +22,6 @@ batch_size = 1
 rnn  = RNN(batch_size = batch_size, concat_based_LSTM = True, addition_based_LSTM = False,
            hidden_size = 100, cell_size = 100) # lstm gets instantiated inside RNN class.
 rnn = rnn.double()
-
-
 
 # instantiate optimizer
 optimizer = torch.optim.Adam(rnn.parameters(), lr = 1e-3, betas = (0.9, 0.99))
@@ -43,6 +40,9 @@ rmse_list = [] # used in function test_after_epoch
 total_loss = 0
 
 def test_after_epoch():
+    """
+    Currently, this only tests where batch size = 1. Update to accomodate larger batch size. 
+    """
     y_pred = [] # we reset this to empty for every epoch
     y_true = [] # we reset this to empty for every epoch
 
@@ -76,8 +76,10 @@ def test_after_epoch():
     rmse_list.append(rmse)
     print('r_2, rmse testing after epoch' , epoch, ': ', r_2, rmse)
 
-            
 
+
+# training loop below. Note, not possible to do batched gradient descent. Should implement this, so that we can find a better optimized 
+# function.
 for epoch in range(epochs):
     for i, timeseries in enumerate(training_dataloader):
         optimizer.zero_grad()
@@ -100,10 +102,10 @@ for epoch in range(epochs):
         optimizer.step() # take a step based on optimizer learning rate and hyper-parameters.
         total_loss += loss.item()
 
-        if (i + 1) % 20 == 0:
-            avg_loss = total_loss / 20
+        if (i + 1) % 50 == 0:
+            avg_loss = total_loss / 50
             running_loss.append(avg_loss)
-            #print("Loss is ", avg_loss)
+            print("Loss in epoch", epoch, " is ", avg_loss)
             total_loss = 0
 
     print('KICKING OFF TEST AFTER EPOCH')
@@ -122,7 +124,6 @@ plt.clf() # close figure so we can save r_2, rmse values later.
 plt.plot(r_2_list, label='R^2 values')
 plt.plot(rmse_list, label = 'RMSE values')
 plt.title('R^2 and RMSE on Test Data -' + testing_data.field)
-#plt.ylim(bottom = -1, top = 1)
 plt.xlabel('Epoch')
 plt.ylabel('RMSE or R_2')
 plt.legend()
@@ -133,13 +134,4 @@ torch.save(rnn.state_dict(), 'trained_rnn_model.pth')
 
 total_params = sum(p.numel() for p in rnn.parameters())
 print("Total number of parameters: {}".format(total_params))
-
-
-# create empty list for y_true and y_pred. Will need for computing RMSE and R^2
-
-
-
-
-# compute RMSE and R^2 values:
-# RMSE is the square root of the squared difference of the sum of each prediction and observation divided by the number of observations.
 
