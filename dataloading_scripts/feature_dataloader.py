@@ -79,6 +79,7 @@ class FeaturesDataset(torch.utils.data.Dataset):
         self.num_plots = self.df['Plot'].unique().shape[0] # number of unique plots. We will need to pass features from each of these in a time series
         # to the model.
         self.plots = self.df['Plot'].unique()
+        self.field = field
         
 
     def __len__(self):

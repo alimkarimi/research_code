@@ -224,6 +224,8 @@ class RNN(nn.Module):
         self.batch_size = batch_size
         self.hidden_size = hidden_size
         self.cell_size = cell_size
+
+        self.relu = nn.ReLU()
         if addition_based_LSTM:
             self.lstm = LSTM_addition_based(input_size= 17, hidden_size= hidden_size, cell_size=cell_size)
             print('instantiating addition based LSTM')
@@ -245,11 +247,11 @@ class RNN(nn.Module):
                 ht_minus_1 = torch.zeros((self.lstm.hidden_size)) # size 100
                 ct_minus_1 = torch.zeros((self.lstm.cell_size)) # size 100
                 ht, ct = self.lstm(xt, ct_minus_1, ht_minus_1)
-                pred = self.fc(ht)
+                pred = self.fc(self.relu(ht))
                 predictions_in_series[n] = pred
             else:
                 ht, ct = self.lstm(xt, ht, ct)
-                pred = self.fc(ht)
+                pred = self.fc(self.relu(ht))
                 predictions_in_series[n] = pred
         
         return ct, ht, pred, predictions_in_series # prediction is final prediciton. predictions_in_series is every timestep's prediction.
