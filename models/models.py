@@ -140,6 +140,12 @@ class LSTM_concat_based(nn.Module):
     I have seen it referenced by both Dr. Bouman and Dr. Inouye. I see it has good details about the mathematics.
     However, one diffrence in this blog's equations from the other 2 sets of equations above is the input features
     are concatenated, not added. This changes the dimensions of all the weight matrices.
+
+    Forget gate:
+    Sigmoid helps us understand how much to "remember" (on a scale of 0 to 1) from the input + hidden state.
+
+    Input gate:
+    Sigmoid helps us understand how much to "forget" on scale from 0 to 1.
     """
     def __init__(self, input_size, hidden_size, cell_size):
         """
@@ -242,7 +248,7 @@ class RNN(nn.Module):
                 pred = self.fc(ht)
                 predictions_in_series[n] = pred
             else:
-                ht, ct = self.lstm(xt, ct_minus_1, ht_minus_1)
+                ht, ct = self.lstm(xt, ht, ct)
                 pred = self.fc(ht)
                 predictions_in_series[n] = pred
         
