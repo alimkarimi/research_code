@@ -27,8 +27,8 @@ rnn = rnn.double()
 optimizer = torch.optim.Adam(rnn.parameters(), lr = 1e-3, betas = (0.9, 0.99))
 
 # instantiate dataset
-training_data = FeaturesDataset(field = 'hips_2021', train=True, test=False)
-testing_data     = FeaturesDataset(field = 'hips_2021', train=False, test=True)
+training_data = FeaturesDataset(field = 'hips_both_years', train=True, test=False)
+testing_data     = FeaturesDataset(field = 'hips_both_years', train=False, test=True)
 
 # instantiate dataloaders for train/test
 training_dataloader = torch.utils.data.DataLoader(training_data, batch_size=1, num_workers = 0, drop_last=False, shuffle=True)
@@ -114,20 +114,20 @@ for epoch in range(epochs):
 
 # print training loss curve after training run:
 plt.plot(running_loss)
-plt.xlabel('iter * 20')
-plt.ylabel('loss')
-plt.title('loss over training')
-plt.savefig('training_running_loss.jpg')
+plt.xlabel('Iteration * 50')
+plt.ylabel('Loss')
+plt.title('Loss over training for ' + testing_data.field)
+plt.savefig('training_running_loss_' + testing_data.field + '.jpg')
 plt.clf() # close figure so we can save r_2, rmse values later.
 
 # print rmse and r_2 after each epoch:
 plt.plot(r_2_list, label='R^2 values')
 plt.plot(rmse_list, label = 'RMSE values')
-plt.title('R^2 and RMSE on Test Data -' + testing_data.field)
+plt.title('R^2 and RMSE on Test Data - ' + testing_data.field)
 plt.xlabel('Epoch')
 plt.ylabel('RMSE or R_2')
 plt.legend()
-plt.savefig('r_2_and_rmse_over_training.jpg')
+plt.savefig('r_2_and_rmse_over_training_' + testing_data.field + '.jpg')
 
 # save the model:
 torch.save(rnn.state_dict(), 'trained_rnn_model.pth')
