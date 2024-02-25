@@ -18,5 +18,3 @@ How to use Transformer to predict LAI at every timestep:
 
 ### 
 Add info about LSTM
-
-A changed line for testing git... added this locally.
