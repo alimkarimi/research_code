@@ -16,6 +16,11 @@ import time
 
 import rasterio
 
+import sys
+sys.path.append('..')
+
+from dataloading_scripts.load_plots import load_plot
+
 print('imported')
 
 hyp_path = '/Volumes/depot/iot4agrs/data/sensor_data/2021_field72/20210727_f72e_india_44m/vnir/processed/elm_mosaic/'
@@ -23,10 +28,11 @@ hyp_file = hyp_path + 'seam_mosaic'
 hyp_path_local = '/Users/alim/Documents/prototyping/research_lab/hyperspectral_data/2021_field72/20210727_f72e_india_44m/vnir/elm_mosaic/'
 hyp_file_local = hyp_path_local + 'seam_mosaic'
 
+
 ds = gdal.Open(hyp_file_local)
 
 
-def read_hyperspectral_data(path = hyp_file_local, num_bands = 135, debug=True, save=True):
+def read_hyperspectral_data(folder, path = hyp_file_local, num_bands = 135, debug=True, save=True):
 
     data = gdal.Open(path)
     
@@ -69,8 +75,8 @@ def read_hyperspectral_data(path = hyp_file_local, num_bands = 135, debug=True, 
     if save:
         print('saving files as .npy...')
         t1 = time.time()
-        np.save('/Users/alim/Documents/prototyping/research_lab/hyperspectral_data/numpy_hyp.npy', img)
-        np.save('/Users/alim/Documents/prototyping/research_lab/hyperspectral_data/numpy_freq.npy', freq)
+        np.save('/Users/alim/Documents/prototyping/research_lab/HIPS_Hyperspectral/' + folder + '/numpy_hyp.npy', img)
+        np.save('/Users/alim/Documents/prototyping/research_lab/HIPS_Hyperspectral/' + folder + '/numpy_freq.npy', freq)
         t2 = time.time()
         if debug:
             print('done saving files... it took', np.abs(t1-t2), 'seconds.')
@@ -94,6 +100,68 @@ def get_visual_hyperspectral_rgb(freq, hyp_im):
     img = 1.0 * np.dstack((r,g,b))
     img = (img-img.min())/(img.max()-img.min())
     return img
+
+def read_hyp_np(file):
+    """
+    Read a .npy file, return it loaded.
+    """
+    print('about to load file...')
+    loaded_file = np.load(file)   
+    return loaded_file
+
+def read_freq_np(file):
+    """
+    Read the frequency/wavelength data associated with a hyperspectral file in a .npy
+    """
+    print('about to load freq')
+    loaded_file = np.load(file)
+    return loaded_file
+
+def get_transformation_matrix(ds = ds):
+    """
+    The function expects an opened ds object to be passed in. ds object can be created via ds = gdal.Open(fp)
+    Transform as shown in Geotransform tutorial on GDAL website (https://gdal.org/tutorials/geotransforms_tut.html):
+    X_geo = GT(0) + X_pixel * GT(1) + Y_line * GT(2)
+    Y_geo = GT(3) + X_pixel * GT(4) + Y_line * GT(5)
+
+    This is essentially an Ax + b transform
+
+    A is a 2 x 2 matrix in the format np.array([[GT1, GT2], 
+                                                [GT4, GT5]])
+    x = [X_pixel, Y_line].T
+    b = [GT0, GT3].T
+    """
+    # get transformation matrix parametres:
+
+    transform_params = ds.GetGeoTransform()
+
+    # arrange parameters into a matrix and offset:
+    A = np.array([[transform_params[1], transform_params[2]], 
+                    [transform_params[4], transform_params[5]]])
+    b = np.array([transform_params[0], transform_params[3]]).T
+
+    return A, b
+
+def transform_image(A, b, np_img_coords):
+    """
+    This function expects a np object to generate an empty np array with the right x/y shape.
+    Each index in the numpy array will be transformed, and written to a new numpy array. The values in 
+    this numpy array will contain the NAD83 UTM 16 (EPSG 26916) coordinates.
+
+    These coordinates can then be used with the plot boundaries to reference which indices to "crop" from the original 
+    numpy array.
+
+    The final image can be converted to a torch tensor for use in a deep learning algorithm!
+    """
+    np_geo_coords = np.empty((np_img_coords.shape[1], np_img_coords.shape[2])) # first axis of the numpy object is the number of channels. This is 
+    # irrelevant for this transformation.
+
+    for row in range(np_img_coords.shape[1]):
+        for col in range(np_img_coords.shape[2]):
+            x = np.array([row, col]).T
+            np_geo_coords[row, col] = A @ x + b
+
+    return np_geo_coords
 
 
 def read_hdr(hdr_file = None):
@@ -168,5 +236,79 @@ if __name__ == "__main__":
     # plt.imshow(img_rgb)
     # plt.savefig('visualize_hyperspectral.jpg')
 
-    open_and_visualize_lidar()
+    #open_and_visualize_lidar()
+    hyp_path_local_all = '/Users/alim/Documents/prototyping/research_lab/HIPS_Hyperspectral/'
+
+    #plot level directories:
+    plot_path_root = '/Users/alim/Documents/prototyping/research_lab/HIPS_grid/'
+    plot_path_2022_hips = 'hips_2022_plot_extraction_Alim_modified_on_gsheets_20220609_f78_hips_manshrink.csv'
+    plot_path_2021_hips = '20210617_india_f42mYS_HIPS_1cm_noshrinkWei.txt'
+    ####
+
+    local_dirs = os.listdir(hyp_path_local_all)
+    local_dirs.remove('.DS_Store')
+    local_dirs.sort()
+    print(local_dirs)
+    for folder in local_dirs:
+        print('in', folder)
+        if folder[0:4] == '2021':
+            path = hyp_path_local_all + folder + '/seam_mosaic'
+            #read_hyperspectral_data(folder, path = path, save=False)
+            hyp = read_hyp_np(hyp_path_local_all + folder + '/numpy_hyp.npy')
+            #freq = read_freq_np(hyp_path_local_all + folder + '/numpy_freq.npy')
+            plot_data = load_plot(path = plot_path_root + plot_path_2021_hips, field='hips_2021', img_coords = False, geo_coords=True)
+            xyxy, coords = plot_data
+            print(xyxy)
+            print(coords)
+
+            # get transformation matrix:
+            ds = gdal.Open(path)
+            A, b = get_transformation_matrix(ds)
+            # do the transform on an image coordinate:
+            output = transform_image(A, b, np_img_coords=hyp)
+            print(output)
+
+            # # the images spatial reference is:
+            # # Get the image's spatial reference
+            # print('images srs')
+            # image_srs = osr.SpatialReference()
+            # image_srs.ImportFromWkt(ds.GetProjection())
+
+            # # Define the target NAD83 UTM spatial reference
+            # target_srs = osr.SpatialReference()
+            # target_srs.SetWellKnownGeogCS("NAD83")
+            # target_srs.SetUTM(16, True)  # Set UTM zone and hemisphere 
+
+            # # Create a coordinate transformation object
+            # transform = osr.CoordinateTransformation(image_srs, target_srs)
+
+            # # Convert image coordinates to NAD83 UTM coordinates
+            # x_image, y_image = 500164, 4480666  # Example image coordinates
+            # x_utm, y_utm, _ = transform.TransformPoint(x_image, y_image)
+            # print(x_utm, y_utm, _)
+            # print('heRE!!!!')
+            
+
+
+
+
+
+
+        if folder[0:4] == '2022' and folder[-4:] != '0831':
+            hyp = read_hyp_np(hyp_path_local_all + folder + '/numpy_hyp.npy')
+            freq = read_freq_np(hyp_path_local_all + folder + '/numpy_freq.npy')
+            plot_data = load_plot(path = plot_path_root + plot_path_2022_hips)
+            print(plot_data.shape)
+            print(hyp.shape)
+        
+
+
+        # if folder == '20220623':
+        #     path = hyp_path_local_all + folder + '/20220623_vnir_60m_1110_vnirMosaic_4cm'
+        # if folder == '20220710':
+        #     path = hyp_path_local_all + folder + '/20220710_rgb_lidar_vnir_44m_1255_vnirMosaic_4cm'
+        # if folder == '20220831':
+        #     print('debugging this file... skipping opening for now...')
+            continue
+
 
