@@ -1,3 +1,6 @@
+# test to import gdal:
+from osgeo import gdal
+
 def final_test():
     print('found this too!!!')
 

@@ -1,5 +1,12 @@
-# research_code
-Hyperspectral and LiDAR data processing. ML and deep learning models to do time series predictions. 
+# Overview:
+This repository contains all the code used to do prediction of LAI using UAV based hyperspectral and LiDAR observations.
+Furthermore, weather features like precipitaion and growing degree days are also incorporated into the model.
+
+There is a significant amount of pre-processing, which is found in the dataloading and processing folders. 
+
+The acutal modeling code (for statistical and deep learning models) are found in the models folder. 
+
+The goal for the LSTM and Transformer models is to predict LAI at each time point. 
 
 Models:
 Support Vector Regression to predict LAI based on extracted hyperspectral and LiDAR features.
