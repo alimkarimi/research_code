@@ -225,7 +225,6 @@ class RNN(nn.Module):
         self.hidden_size = hidden_size
         self.cell_size = cell_size
 
-        self.relu = nn.ReLU()
         if addition_based_LSTM:
             self.lstm = LSTM_addition_based(input_size= 17, hidden_size= hidden_size, cell_size=cell_size)
             print('instantiating addition based LSTM')
@@ -234,6 +233,7 @@ class RNN(nn.Module):
             print('instantiating concat based LSTM')
 
         self.fc = nn.Linear(self.lstm.hidden_size, 1) # fc layer to do prediction of LAI at every step.
+        self.relu = nn.ReLU() # non-linearity after each LSTM cell output
 
     def forward(self, timeseries):
         # timeseries will have to come from the pytorch dataloader. It is a series of xt where t = {0, 1, ... k-1, k}, where k 
