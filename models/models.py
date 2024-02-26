@@ -256,6 +256,14 @@ class RNN(nn.Module):
         
         return ct, ht, pred, predictions_in_series # prediction is final prediciton. predictions_in_series is every timestep's prediction.
 
+
+class Transformer(nn.Module):
+    def __init__(self):
+        super(Transformer).__init__()
+        self.some = 'placeholder'
+        # consider using class from pytorch: https://pytorch.org/docs/stable/generated/torch.nn.Transformer.html
+
+
 class statistical_model():
     def __init__(self, debug=False, produce_plot=False, produce_metrics=True, cross_validation=False,
                  field_id = 'hips_2021', cv_stratify=False, groups=False, verbose_stratification_and_group_data=True,
