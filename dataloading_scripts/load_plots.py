@@ -7,8 +7,9 @@ import json
 from osgeo import gdal, osr
 
 plot_path_root = '/Users/alim/Documents/prototyping/research_lab/HIPS_grid/'
-plot_path_2022_hips = 'hips_2022_plot_extraction_Alim_modified_on_gsheets_20220609_f78_hips_manshrink.csv'
-plot_path_2021_hips = '20210617_india_f42mYS_HIPS_1cm_noshrinkWei.txt'
+plot_path_2022_hips = '20220609_f78_hips_manshrink.geojson'
+
+plot_path_2021_hips = '20210617_india_f42mYS_HIPS_1cm_noshrinkWei.json'
 
 
 def load_plots_coords_for_field(path = None, field='hips_2022', img_coords=False, geo_coords=True):
@@ -51,69 +52,51 @@ def load_plots_coords_for_field(path = None, field='hips_2022', img_coords=False
             with open(file_path, "r") as file:
                 data = json.load(file)
 
+            return data
 
-            # Now you can work with the loaded JSON data, for example:
-            #print(data)
+        if field == 'hips_2022':
+            file_path = plot_path_root + '20220609_f78_hips_manshrink.geojson'
 
-            """
-            To get a sense of what the data looks like:
-            {'type': 'FeatureCollection', 'crs': {'type': 'name', 'properties': {'name': 'EPSG:26916'}}, 
-            'features': [{'type': 'Feature', 'geometry': {'type': 'Polygon', 'coordinates': 
-            [[[500164.0, 4480666.85], [500164.78, 4480666.85], [500164.78, 4480672.27], [500164.0, 4480672.27]]]},
-             'properties': {'x0': 500164.0, 'y0': 4480666.85, 'x1': 500164.78, 'y1': 4480672.27, 'plot_ID': 4301, 'row_in_plot': 1}},. 
+            with open(file_path, "r") as file:
+                data = json.load(file)
 
-             Note that the spatial reference for the hyperspectral data looks like:
-                    spatial info: PROJCS["unnamed",
-            GEOGCS["NAD83",
-                DATUM["North_American_Datum_1983",
-                    SPHEROID["GRS 1980",6378137,298.257222101,
-                        AUTHORITY["EPSG","7019"]],
-                    AUTHORITY["EPSG","6269"]],
-                PRIMEM["Greenwich",0,
-                    AUTHORITY["EPSG","8901"]],
-                UNIT["degree",0.0174532925199433,
-                    AUTHORITY["EPSG","9122"]],
-                AUTHORITY["EPSG","4269"]],
-            PROJECTION["Transverse_Mercator"],
-            PARAMETER["latitude_of_origin",0],
-            PARAMETER["central_meridian",-87],
-            PARAMETER["scale_factor",0.9996],
-            PARAMETER["false_easting",500000],
-            PARAMETER["false_northing",0],
-            UNIT["Meter",1],
-            AXIS["Easting",EAST],
-            AXIS["Northing",NORTH]]
-            """
-
-            # print(data['type'])
-            # print(data['crs']['properties']['name'])
-            # print(data['features'][0]['geometry']['type'])
-            #print(data['features'][0]['geometry']['coordinates'][0])
-            #print(data['features'][0]['properties'])
-            #return data['features'][0]['properties'], data['features'][0]['geometry']['coordinates'][0]
             return data # returns json
 
-def load_individual_plot_xyxy(plot_json, index):
+def load_individual_plot_xyxy(plot_json, index, field):
     """
     This function takes in a plot json object, an index, and returns the x0, x1, y0, and y1 based plot boundary and index. 
     """
-    xyxy = plot_json['features'][index]['properties']
-    #print(xyxy)
-    x0 = xyxy['x0']
-    y0 = xyxy['y0']
-    x1 = xyxy['x1']
-    y1 = xyxy['y1']
-    plot_id = xyxy['plot_ID']
-    plot_row = xyxy['row_in_plot']
-    return x0, y0, x1, y1, plot_id, plot_row
+    if field == 'hips_2021':
+        xyxy = plot_json['features'][index]['properties']
+        #print(xyxy)
+        x0 = xyxy['x0']
+        y0 = xyxy['y0']
+        x1 = xyxy['x1']
+        y1 = xyxy['y1']
+        plot_id = xyxy['plot_ID']
+        plot_row = xyxy['row_in_plot']
+        return x0, y0, x1, y1, plot_id, plot_row
+    
+    if field == 'hips_2022':
+        x0y0 = plot_json['features'][index]['geometry']['coordinates'][0][0]
+        #coordinates_1 = plot_json['features'][index]['geometry']['coordinates'][0][1]
+        x1y1 = plot_json['features'][index]['geometry']['coordinates'][0][2]
+        #coordinates_3 = plot_json['features'][index]['geometry']['coordinates'][0][3]
+        x0, y0 = x0y0
+        x1, y1 = x1y1
+        plot_id = plot_json['features'][index]['properties']['plot']
+        plot_row = plot_json['features'][index]['properties']['row']
+        #print(plot_id, plot_row)
+        #print(x0, y0, x1, y1)
+        return x0, y0, x1, y1, plot_id, plot_row
 
 
 if __name__ == "__main__":
-
-    data = load_plots_coords_for_field(field='hips_2021', geo_coords=True)
-    print(data)
+    field = 'hips_2022'
+    data = load_plots_coords_for_field(field=field, geo_coords=True)
+    #print(data)
     print(len(data['features']))
     num_feats = len(data['features'])
-    x0, y0, x1, y1, _, __= load_individual_plot_xyxy(data, 2)
-    for i in range(num_feats):
-        print(load_individual_plot_xyxy(data, i))
+    x0, y0, x1, y1, _, __= load_individual_plot_xyxy(data, 2, field = field)
+    for i in range(100):
+        print(load_individual_plot_xyxy(data, i, field= field))
