@@ -15,13 +15,14 @@ import numpy as np
 import time
 
 import rasterio
+import re
 
 from PIL import Image
 
 import sys
 sys.path.append('..')
 
-from dataloading_scripts.load_plots import load_plots_coords_for_field, load_individual_plot_xyxy
+from dataloading_scripts.load_plots import load_plots_coords_for_field, load_individual_plot_xyxy, plot_path_2022_hips, plot_path_2021_hips
 
 print('imported')
 
@@ -65,7 +66,21 @@ def read_hyperspectral_data(folder, path = hyp_file_local, num_bands = 135, debu
         band_data = band.ReadAsArray()
         img[n,:,:] = band_data # note, this is not the ordering for displaying and image,
         # but it is must faster to write the object with n, :, : vs :, :, n. Not sure why. 
-        freq[n]    = band.GetDescription()
+        if folder != '20220831':
+            freq[n]    = band.GetDescription()
+        else:
+            temp_band_desc = band.GetDescription()
+            print(type(temp_band_desc))
+            print('this is temp_band_desc' , temp_band_desc)
+            #pattern = r'(\d+\.\d+)'
+            pattern = r'(?<!\d\.)(?<!\d)(?:[2-9]\d{2,}\.\d+|[2-9]\d{2,}|[1-9]\d{3,}\.\d+|[1-9]\d{3,})'
+
+
+            # Extract numerical value using regex
+            numerical_band_value = re.search(pattern, temp_band_desc)
+            print(numerical_band_value.group())
+            
+            freq[n] = numerical_band_value.group()
         if debug:
             print('max value of band:', band_data.max())
             print('min value of band:', band_data.min())
@@ -77,7 +92,10 @@ def read_hyperspectral_data(folder, path = hyp_file_local, num_bands = 135, debu
     if save:
         print('saving files as .npy...')
         t1 = time.time()
-        np.save('/Users/alim/Documents/prototyping/research_lab/HIPS_Hyperspectral/' + folder + '/numpy_hyp.npy', img)
+        if os.path.exists('/Users/alim/Documents/prototyping/research_lab/HIPS_Hyperspectral/' + folder + '/numpy_hyp.npy'):
+            print('numpy file already saved...')
+        else:
+            np.save('/Users/alim/Documents/prototyping/research_lab/HIPS_Hyperspectral/' + folder + '/numpy_hyp.npy', img)
         np.save('/Users/alim/Documents/prototyping/research_lab/HIPS_Hyperspectral/' + folder + '/numpy_freq.npy', freq)
         t2 = time.time()
         if debug:
@@ -85,16 +103,14 @@ def read_hyperspectral_data(folder, path = hyp_file_local, num_bands = 135, debu
 
     return img, freq
 
-def get_visual_hyperspectral_rgb(freq, hyp_im):
+def get_visual_hyperspectral_rgb(hyp_im, freq):
     """
-    Pass in a numpy array in format h x w x c and the frequency data.
+    Pass in a numpy array in format h x w x c and the frequency data. c can be many channels.
     
     This function will visualize rgb channels from those two objects.
 
     Returns visualizable image
     """
-    if hyp_im.shape[2] != 3:
-        hyp_im = hyp_im.transpose(1,2,0)
 
     r = np.mean(hyp_im[:,:,np.logical_and(freq>640,freq<670)],axis=2)
     g = np.mean(hyp_im[:,:,np.logical_and(freq>530,freq<590)],axis=2)
@@ -119,8 +135,37 @@ def read_freq_np(file):
     loaded_file = np.load(file)
     return loaded_file
 
+def save_extracted_plot(base_path, folder, filename, extracted_plot, extension='.npy'):
+    np.save(file = base_path + folder + filename + extension, arr = extracted_plot)
+    print('saved file as', base_path + folder + filename + extension)
+
+def save_rgb(base_path, folder, filename, get_visual_hyperspectral_rgb, hyp_im, freq, extension='.jpg'):
+    """
+    Note that get_visual_hyperspectral_rgb() expects data in h x w x c
+    """
+    if hyp_im.shape[2] != 136:
+        hyp_im = hyp_im.transpose(1,2,0)
+    rgb_data = get_visual_hyperspectral_rgb(hyp_im, freq)
+    # rgb data is returned between 0 and 1
+    rgb_data = (rgb_data * 255).astype(np.uint8)
+
+    im = Image.fromarray(rgb_data)
+    im.save(base_path + folder + filename + extension)
+
+def get_inverse_transformation_matrix(ds = ds):
+    """
+    Get the inverse affine transform to go from projected coordinate to pixel coordinate:
+
+    How to use: A_inv @ [x_utm, y_utm] + b_inv = [x_img, y_img]
+    """
+    A, b = get_transformation_matrix(ds)
+    A_inv = np.linalg.inv(A)
+    b_inv = -A_inv @ b
+    return A_inv, b_inv
+
 def get_transformation_matrix(ds = ds):
     """
+    Goes from pixel coordinates to projected coordinates.
     The function expects an opened ds object to be passed in. ds object can be created via ds = gdal.Open(fp)
     Transform as shown in Geotransform tutorial on GDAL website (https://gdal.org/tutorials/geotransforms_tut.html):
     X_geo = GT(0) + X_pixel * GT(1) + Y_line * GT(2)
@@ -132,21 +177,24 @@ def get_transformation_matrix(ds = ds):
                                                 [GT4, GT5]])
     x = [X_pixel, Y_line].T
     b = [GT0, GT3].T
+
+    
     """
     # get transformation matrix parametres:
 
     transform_params = ds.GetGeoTransform()
+    print(transform_params)
 
-    # arrange parameters into a matrix and offset:
     A = np.array([[transform_params[1], transform_params[2]], 
-                    [transform_params[4], transform_params[5]]])
-    b = np.array([transform_params[0], transform_params[3]]).T
+                     [transform_params[4], transform_params[5]]])
+    b = np.array([transform_params[0], transform_params[3]])
 
     return A, b
 
-def transform_image_and_extract_plot(A, b, np_img_coords, plot_json, index):
+def transform_image_and_extract_plot(A, b, np_img_coords, plot_json, index, folder, freq, field, loop=False, direct=False, 
+                                    use_px_coords = True, debug=False, save=False):
     """
-    This function expects a np object with hyperspectral data to generate an empty np array with the right x/y shape.
+    This function expects a np object with hyperspectral data to generate an empty np array with the right rows/cols shape.
     Each index in the numpy array will be linearly transformed using the A and b parameters. This transform represents 
     the pixel coordinate in EPSG 26916 (NAD 83 UTM 16). Then, using the plot_json object, we can understand the plot boundaries
     for each plot id. We can then add a TRUE or FALSE into np_geo_coords, which represents whether a plot is contained within 
@@ -161,28 +209,132 @@ def transform_image_and_extract_plot(A, b, np_img_coords, plot_json, index):
     """
     np_geo_coords = np.empty((np_img_coords.shape[1], np_img_coords.shape[2])) # first axis of the numpy object is the number of channels. This is 
     # irrelevant for this transformation.
-    plot_json = load_plots_coords_for_field(field='hips_2021') # load plot json for the image.
-    x0, y0, x1, y1, plot_id, plot_row = load_individual_plot_xyxy(plot_json=plot_json, index=index) # get the boundaries for the plot
+    plot_json = load_plots_coords_for_field(field=field) # load plot json for the image.
 
-    # below, we iterate through each pixel, figure out if pixel is in the boundary for the plot.
-    for row in range(np_img_coords.shape[1]):
-        for col in range(np_img_coords.shape[2]):
-            x = np.array([row, col]).T
-            transformed_index = A @ x + b # a 2d vector with the [x,y] in NAD83 UTM 16
-            
-            if transformed_index[0] >= x0 and transformed_index[0] <= x1 \
-            and transformed_index[1] >= y0 and transformed_index[1] <= y1: # we are inside the plot boundary.
-                np_geo_coords[col, row] = True # need to understand why [col, row] extracts plots in the correct orientation!!
-    
-    print('number of pixels extracted for plot id and row', plot_id, plot_row, ':', np.count_nonzero(np_geo_coords))
+    x0, y0, x1, y1, plot_id, plot_row = load_individual_plot_xyxy(plot_json=plot_json, index=index, field=field) # get the boundaries for the plot
+    print(x0, y0,' this is x0 and y0')
+    print(A, b)
+    b = b.reshape(2,1)
+    x0y0 = A @ np.array([[x0], [y0]]).reshape(2,1) + b
+    x1y1 = A @ np.array([[x1], [y1]]).reshape(2,1) + b
+    print(x0y0, '\ninverted to pixel coords!!')
+    print(x1y1)
 
-    mask = np_geo_coords.astype(bool)
-    print(mask)
-    print(mask.shape)
-    cropped_plot = np_img_coords[:, mask]
-    print('this is cropped plot', cropped_plot.shape)
+    if use_px_coords:
+        # this option is to use the inverse transform, and appy operations directly on pixel coordiantes. 
+        x0 = int(np.floor(x0y0[0])) # column 1501 
+        y0 = int(np.ceil(x0y0[1])) # row 1417
+        x1 = int(np.ceil(x1y1[0])) # column 1521
+        y1 = int(np.floor(x1y1[1])) # row 1287
+        print(x0, y0, x1, y1)
+        print(np_img_coords.shape[1], np_img_coords.shape[2]) # 2676 rows, 3352 columns
+        # Create a boolean mask array initialized with False
 
-    return np_geo_coords
+        mask = np.zeros((136, np_img_coords.shape[1], np_img_coords.shape[2]), dtype=bool)
+        # print(mask.shape)
+
+        # Set pixels within the boundary to True
+        mask[:, y1:y0+1, x0:x1+1] = True
+        cropped_plot = np_img_coords[:, y1:y0 + 1, x0:x1 + 1]
+        print('cropped_plot', cropped_plot.shape)
+
+        if save:
+            save_extracted_plot(base_path = '/Users/alim/Documents/prototyping/research_lab/HIPS_Hyperspectral/', 
+                folder= folder + '/', filename=str(plot_id) + '_' + str(plot_row), extracted_plot=cropped_plot)
+
+            save_rgb(base_path = '/Users/alim/Documents/prototyping/research_lab/HIPS_Hyperspectral/', 
+                folder= folder + '/', filename=str(plot_id) + '_' + str(plot_row), hyp_im = cropped_plot, 
+                get_visual_hyperspectral_rgb=get_visual_hyperspectral_rgb, freq=freq)
+
+
+        return mask, cropped_plot, 'placeholder'
+        
+
+    if direct:
+
+        x = np.indices((np_img_coords.shape[1], np_img_coords.shape[2])) # generate indices for the original image.
+        print('original x shape:', x.shape)
+        x = x.reshape(2, -1)
+        # For a 2 x 2 image, the indices are (0,0), (0,1), (1,0), (1,1).
+        # These indices can all be transformed at once using the A matrix operator - this is more efficient than a for loop! 
+        print(x)
+
+        print('b is', b, b.shape)
+        print(b.reshape(2,1))
+        
+        transformed_coordinates = A @ x + b.reshape(2,1) 
+        print('applied transform!')
+        print('transformed result shape:', transformed_coordinates.shape)
+
+
+        # create mask on transformed coordinates. 
+        mask = (transformed_coordinates[0] >= x0) & (transformed_coordinates[0] <= x1) & (transformed_coordinates[1] >= y0)  & \
+            (transformed_coordinates[1] <= y1)
+        
+        print('created mask', mask, mask.shape)
+        # reshape mask back to the original hyperspectral image shape:
+        mask = mask.reshape(np_img_coords.shape[1], np_img_coords.shape[2])
+        print('unique vals in mask:', np.unique(mask))
+
+        cropped_plot = np_img_coords * mask
+        print(cropped_plot.shape)
+        print('number of pixels extracted for plot id and row', plot_id, plot_row, ':', np.count_nonzero(cropped_plot))
+
+        return np_geo_coords, cropped_plot, 'placeholder'
+
+    if loop:
+    #below, we iterate through each pixel, figure out if pixel is in the boundary for the plot.
+        for row in range(np_img_coords.shape[1]):
+            for col in range(np_img_coords.shape[2]):
+                x = np.array([row, col]).T
+                # print('x is', x)
+                # print('A is', A)
+                # print('b is', b)
+                # print('shape of A @ x', (A@x).shape)
+
+                transformed_index = A @ x + b # result is 2d vector with the [x,y] in NAD83 UTM 16. Note, x is the column, y is the row.
+                # print(transformed_index[0], transformed_index[1])
+                # print('transformed index:', transformed_index)
+                
+                if transformed_index[0] >= x0 and transformed_index[0] <= x1 \
+                and transformed_index[1] >= y0 and transformed_index[1] <= y1: # we are inside the plot boundary.
+                    np_geo_coords[col, row] = True # Note, this has to be col, row to keep the correct orientation. 
+                    # when we perform the if statement above, x0/x1 are the COLUMNS, y0/y1 are the ROWS. 
+                    print('found px in boundary at row/col', row, col)
+                           
+
+        mask = np_geo_coords.astype(bool)
+        # print(mask)
+        # print(mask.shape)
+        #cropped_plot = np_img_coords[:, mask]
+        plot_in_field = np_img_coords * mask
+        print('this is cropped plot', plot_in_field.shape)
+        print('number of pixels extracted for plot id and row', plot_id, plot_row, ':', np.count_nonzero(plot_in_field))
+
+        # now, we actually drop the pixels where the mask is false.
+
+        boundary = np.where(mask == True) # boundary returns a list of x and y coordiantes. boundary[0] are the x's, boundary[1] are the 
+        # corresponding y's
+        if debug:
+            print(boundary)
+            print(boundary[0].shape)
+            print(boundary[1].shape)
+            print('boundary for top left:')
+            print('boundary for bottom right??')
+            print(boundary[0][-1], boundary[1][-1])
+            print(boundary[0][0], boundary[1][0])
+
+        top_left_coordinates = (boundary[0][0], boundary[1][0] + 1)
+        bottom_right_coordinates = (boundary[0][-1], boundary[1][-1] + 1)
+        cropped_plot = plot_in_field[:, top_left_coordinates[0] : bottom_right_coordinates[0], top_left_coordinates[1] : bottom_right_coordinates[1]]
+        print('extracted the following shape from the original hyperspectral image:', cropped_plot.shape)
+
+        if save:
+            save_extracted_plot(base_path = '/Users/alim/Documents/prototyping/research_lab/HIPS_Hyperspectral/', 
+                            folder= folder + '/', filename=str(plot_id) + '_' + str(plot_row), extension='.npy',
+                            extracted_plot=cropped_plot)
+        
+        return np_geo_coords, cropped_plot, plot_in_field 
 
 
 def read_hdr(hdr_file = None):
@@ -198,6 +350,9 @@ def read_hdr(hdr_file = None):
     print(metadata)
 
 def open_rgb_orthos():
+    """
+    This function prints out the dimensions of the seam_mosaic.jpg files. It is not needed in the processing, just a sanity checker. 
+    """
     hyp_path_local_all = '/Users/alim/Documents/prototyping/research_lab/HIPS_Hyperspectral/'
     local_dirs = os.listdir(hyp_path_local_all)
     local_dirs.remove('.DS_Store')
@@ -208,32 +363,99 @@ def open_rgb_orthos():
         np_img = np.uint8(PIL_img)
         print(np_img.shape)
 
-def open_and_visualize_lidar(visualize=False):
 
-    lidar_path = '/Volumes/depot/iot4agrs/data/sensor_data/2021_field72/20210727_f72e_india_44m/lidar/final/'
-    lidar_path = '/Volumes/depot/iot4agrs/data/sensor_data/2021_field72/20210802_f72w_india_44m/lidar/processed/final/'
+def main_hyperspectral_orchestrator():
+    plot_path_root = '/Users/alim/Documents/prototyping/research_lab/HIPS_grid/'
+    hyp_path_local_all = '/Users/alim/Documents/prototyping/research_lab/HIPS_Hyperspectral/'
 
-    lidar_file = lidar_path + 'DSM.las'
-    lidar_opened = laspy.read(lidar_file)
 
-    print(dir(lidar_opened))
-    print(lidar_opened.x.min(), lidar_opened.x.max())
+    local_dirs = os.listdir(hyp_path_local_all)
+    local_dirs.remove('.DS_Store')
+    local_dirs.sort()
+    print(local_dirs)
+    hyp_plot_li = []
+    for folder in local_dirs:
+        print('in', folder)
+
+        if folder[0:4] == '2021':
+            # open the hyperspectral data, corresponding frequencies, and plot data. This will be the same for each folder (i.e, timestep)            
+            path = hyp_path_local_all + folder + '/seam_mosaic'
+            hyp = read_hyp_np(hyp_path_local_all + folder + '/numpy_hyp.npy')
+            freq = read_freq_np(hyp_path_local_all + folder + '/numpy_freq.npy')
+            plot_data = load_plots_coords_for_field(path = plot_path_root + plot_path_2021_hips, field='hips_2021', 
+                                                    img_coords = False, geo_coords=True)
+            print('shape of loaded numpy:', hyp.shape)
+
+            ds = gdal.Open(path)
+            
+            A, b = get_transformation_matrix(ds)
+            A_inv, b_inv = get_inverse_transformation_matrix(ds)
+            # do the transform on an image coordinate:
+
+            for i in range(150, 200): # update this range to get all fields.
+                output_bools, cropped_plot, entire_field = transform_image_and_extract_plot(A_inv, b_inv, np_img_coords=hyp, 
+                plot_json=plot_data, index=i, folder=folder, freq=freq, field='hips_2021', loop=False, direct=False, use_px_coords = True, save=True)
+                hyp_plot_li.append(cropped_plot)
+
+
+        if folder[0:4] == '2022':
+            if folder == '20220623':
+                path = hyp_path_local_all + folder + '/20220623_vnir_60m_1110_vnirMosaic_4cm'
+            if folder == '20220710':
+                path = hyp_path_local_all + folder + '/20220710_rgb_lidar_vnir_44m_1255_vnirMosaic_4cm'
+            if folder == '20220831':
+                path = hyp_path_local_all + folder + '/20220831_rgb_lidar_vnir_44m_1202_vnirMosaic_4cm'
+            
+            hyp = read_hyp_np(hyp_path_local_all + folder + '/numpy_hyp.npy')
+            freq = read_freq_np(hyp_path_local_all + folder + '/numpy_freq.npy')
+            plot_data = load_plots_coords_for_field(path = plot_path_root + plot_path_2022_hips, field='hips_2022', img_coords = False, geo_coords=True)
+            print(hyp.shape)
+
+            ds = gdal.Open(path)
+            
+            A, b = get_transformation_matrix(ds)
+            A_inv, b_inv = get_inverse_transformation_matrix(ds)
+            print('got transformations')
+            # do the transform on an image coordinate:
+
+            for i in range(150, 200): # update this range to get all fields.
+                output_bools, cropped_plot, entire_field = transform_image_and_extract_plot(A_inv, b_inv, np_img_coords=hyp, 
+                plot_json=plot_data, index=i, folder=folder, freq=freq, field='hips_2022', loop=False, direct=False, use_px_coords = True, save=True)
+                hyp_plot_li.append(cropped_plot)
+
+def open_and_visualize_lidar(lidar_file_path, visualize=False):
+
+    # lidar_path = '/Volumes/depot/iot4agrs/data/sensor_data/2021_field72/20210727_f72e_india_44m/lidar/final/'
+    # lidar_path = '/Volumes/depot/iot4agrs/data/sensor_data/2021_field72/20210802_f72w_india_44m/lidar/processed/final/'
+
+    # lidar_file = lidar_path + 'DSM.las'
+    lidar = laspy.read(lidar_file_path)
+
+    #print(dir(lidar_opened))
+    print(lidar.x.min(), lidar.x.max())
     print('above was x, now printing y')
-    print(lidar_opened.y.min(), lidar_opened.y.max())
+    print(lidar.y.min(), lidar.y.max())
     print('now printing z')
-    print(lidar_opened.z.min(), lidar_opened.z.max())
+    print(lidar.z.min(), lidar.z.max())
 
-    print(dir(lidar_opened.header))
+    x_pts = lidar.x
+    y_pts = lidar.y
+    print(x_pts[0], y_pts)
+
+    #print(dir(lidar_opened.header))
     # Access header information
-    header = lidar_opened.header
+    header = lidar.header
     print("Header information:")
     print("Number of points:", header.point_count)
     print("Point format:", header.point_format)
     print("scales:", header.scales, header.y_scale, header.z_offset)
+    print('crs????')
     print(header.parse_crs()) # doesn't exist as an attribute
-    print(dir(header))
+    #print(dir(header))
 
-    points = lidar_opened.points
+
+
+    points = lidar.points
 
     if visualize:
         fig = plt.figure(figsize=(10, 8))
@@ -251,110 +473,29 @@ def open_and_visualize_lidar(visualize=False):
         fig.savefig('lidar.jpg')
 
 if __name__ == "__main__":
-    # #hyp_img, freq = read_hyperspectral_data()
-    # path_hyp = '/Users/alim/Documents/prototyping/research_lab/hyperspectral_data/numpy_hyp.npy'
-    # path_freq = '/Users/alim/Documents/prototyping/research_lab/hyperspectral_data/numpy_freq.npy'
-    # t1 = time.time()
-    # hyp_im = np.load(path_hyp)
-    # freq = np.load(path_freq)
-    # t2 = time.time()
-    # print('took', np.abs(t1-t2), 'to load data')
+    # code to save .npy hyp and freq for 20220831:
+    if not os.path.exists('/Users/alim/Documents/prototyping/research_lab/HIPS_Hyperspectral/20220831/' + 'numpy_hyp.npy'):
+        base_path = '/Users/alim/Documents/prototyping/research_lab/HIPS_Hyperspectral/20220831/'
+        read_hyperspectral_data(folder='20220831', path = base_path + '20220831_rgb_lidar_vnir_44m_1202_vnirMosaic_4cm')
 
-    # t1 = time.time()
-    # img_rgb = get_visual_hyperspectral_rgb(freq, hyp_im)
-    # t2 = time.time()
-    # print('took', np.abs(t1-t2), 'to get visual rgb')
-    # plt.imshow(img_rgb)
-    # plt.savefig('visualize_hyperspectral.jpg')
-
-    #open_rgb_orthos()
+    do_hyp = False
 
     #open_and_visualize_lidar()
-    hyp_path_local_all = '/Users/alim/Documents/prototyping/research_lab/HIPS_Hyperspectral/'
-
-    #plot level directories:
-    plot_path_root = '/Users/alim/Documents/prototyping/research_lab/HIPS_grid/'
-    plot_path_2022_hips = 'hips_2022_plot_extraction_Alim_modified_on_gsheets_20220609_f78_hips_manshrink.csv'
-    plot_path_2021_hips = '20210617_india_f42mYS_HIPS_1cm_noshrinkWei.txt'
-    ####
-
-    local_dirs = os.listdir(hyp_path_local_all)
+    lidar_path_local_all = '/Users/alim/Documents/prototyping/research_lab/HIPS_LiDAR/'
+    local_dirs = os.listdir(lidar_path_local_all)
     local_dirs.remove('.DS_Store')
     local_dirs.sort()
     print(local_dirs)
-    hyp_plot_li = []
     for folder in local_dirs:
-        print('in', folder)
-        if folder[0:4] == '2021':
-            path = hyp_path_local_all + folder + '/seam_mosaic'
-            #read_hyperspectral_data(folder, path = path, save=False)
-            hyp = read_hyp_np(hyp_path_local_all + folder + '/numpy_hyp.npy')
-            #freq = read_freq_np(hyp_path_local_all + folder + '/numpy_freq.npy')
-            plot_data = load_plots_coords_for_field(path = plot_path_root + plot_path_2021_hips, field='hips_2021', img_coords = False, geo_coords=True)
+        file_in_folder = os.listdir(lidar_path_local_all + folder)
+        print(file_in_folder)
+        full_lidar_fp = lidar_path_local_all + folder + '/' + file_in_folder[0]
+        open_and_visualize_lidar(full_lidar_fp)
 
-            # get transformation matrix:
-
-            ds = gdal.Open(path)
-            A, b = get_transformation_matrix(ds)
-            # do the transform on an image coordinate:
-            print('doing transform!!!')
-            for i in range(len(plot_data['features'])):
-                output = transform_image_and_extract_plot(A, b, np_img_coords=hyp, plot_json=plot_data, index=i)
-                print(output)
-                print(output.shape)
-                hyp_plot_li.append(output)
-                if i == 2:
-                    break
-            break
     
-    plt.imshow(np.uint8(hyp_plot_li[0][2000:2500, 1200:1500 ]))
-    plt.savefig('test_plot0.jpg')
-    plt.imshow(np.uint8(hyp_plot_li[1][2000:2500, 1200:1500 ]))
-    plt.savefig('test_plot1.jpg')
-    plt.imshow(np.uint8(hyp_plot_li[2][2000:2500, 1200:1500 ]))
-    plt.savefig('test_plot2.jpg')
+    if do_hyp:
+        main_hyperspectral_orchestrator()
 
-
-            # # the images spatial reference is:
-            # # Get the image's spatial reference
-            # print('images srs')
-            # image_srs = osr.SpatialReference()
-            # image_srs.ImportFromWkt(ds.GetProjection())
-
-            # # Define the target NAD83 UTM spatial reference
-            # target_srs = osr.SpatialReference()
-            # target_srs.SetWellKnownGeogCS("NAD83")
-            # target_srs.SetUTM(16, True)  # Set UTM zone and hemisphere 
-
-            # # Create a coordinate transformation object
-            # transform = osr.CoordinateTransformation(image_srs, target_srs)
-
-            # # Convert image coordinates to NAD83 UTM coordinates
-            # x_image, y_image = 500164, 4480666  # Example image coordinates
-            # x_utm, y_utm, _ = transform.TransformPoint(x_image, y_image)
-            # print(x_utm, y_utm, _)
-            # print('heRE!!!!')
-            
-
-
-
-
-
-
-        # if folder[0:4] == '2022' and folder[-4:] != '0831':
-        #     hyp = read_hyp_np(hyp_path_local_all + folder + '/numpy_hyp.npy')
-        #     freq = read_freq_np(hyp_path_local_all + folder + '/numpy_freq.npy')
-        #     plot_data = load_plots_coords_for_field(path = plot_path_root + plot_path_2022_hips)
-        #     print(plot_data.shape)
-        #     print(hyp.shape)
-        
-
-
-        # if folder == '20220623':
-        #     path = hyp_path_local_all + folder + '/20220623_vnir_60m_1110_vnirMosaic_4cm'
-        # if folder == '20220710':
-        #     path = hyp_path_local_all + folder + '/20220710_rgb_lidar_vnir_44m_1255_vnirMosaic_4cm'
-        # if folder == '20220831':
-        #     print('debugging this file... skipping opening for now...')
+    
 
 
