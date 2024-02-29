@@ -3,6 +3,8 @@ from osgeo import gdal
 from osgeo import ogr, osr
 from matplotlib import pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
+from matplotlib.ticker import ScalarFormatter
+
 
 import spectral
 import spectral.io.envi as envi
@@ -201,7 +203,7 @@ def transform_image_and_extract_plot(A, b, np_img_coords, plot_json, index, fold
     a certain region of a hyperspectral image. 
     to a new numpy array. The values in 
 
-
+    
     These coordinates can then be used with the plot boundaries to reference which indices to "crop" from the original 
     numpy array.
 
@@ -282,19 +284,15 @@ def transform_image_and_extract_plot(A, b, np_img_coords, plot_json, index, fold
 
         return np_geo_coords, cropped_plot, 'placeholder'
 
-    if loop:
+    if loop: # note that this loop is not efficient...
     #below, we iterate through each pixel, figure out if pixel is in the boundary for the plot.
         for row in range(np_img_coords.shape[1]):
             for col in range(np_img_coords.shape[2]):
                 x = np.array([row, col]).T
-                # print('x is', x)
-                # print('A is', A)
-                # print('b is', b)
-                # print('shape of A @ x', (A@x).shape)
+
 
                 transformed_index = A @ x + b # result is 2d vector with the [x,y] in NAD83 UTM 16. Note, x is the column, y is the row.
-                # print(transformed_index[0], transformed_index[1])
-                # print('transformed index:', transformed_index)
+
                 
                 if transformed_index[0] >= x0 and transformed_index[0] <= x1 \
                 and transformed_index[1] >= y0 and transformed_index[1] <= y1: # we are inside the plot boundary.
@@ -304,9 +302,7 @@ def transform_image_and_extract_plot(A, b, np_img_coords, plot_json, index, fold
                            
 
         mask = np_geo_coords.astype(bool)
-        # print(mask)
-        # print(mask.shape)
-        #cropped_plot = np_img_coords[:, mask]
+
         plot_in_field = np_img_coords * mask
         print('this is cropped plot', plot_in_field.shape)
         print('number of pixels extracted for plot id and row', plot_id, plot_row, ':', np.count_nonzero(plot_in_field))
@@ -423,54 +419,91 @@ def main_hyperspectral_orchestrator():
                 plot_json=plot_data, index=i, folder=folder, freq=freq, field='hips_2022', loop=False, direct=False, use_px_coords = True, save=True)
                 hyp_plot_li.append(cropped_plot)
 
-def open_and_visualize_lidar(lidar_file_path, visualize=False):
+def open_and_visualize_lidar(lidar_file_path, display_metadata=False):
 
     # lidar_path = '/Volumes/depot/iot4agrs/data/sensor_data/2021_field72/20210727_f72e_india_44m/lidar/final/'
     # lidar_path = '/Volumes/depot/iot4agrs/data/sensor_data/2021_field72/20210802_f72w_india_44m/lidar/processed/final/'
 
     # lidar_file = lidar_path + 'DSM.las'
-    lidar = laspy.read(lidar_file_path)
+    lidar_data = laspy.read(lidar_file_path)
+
 
     #print(dir(lidar_opened))
-    print(lidar.x.min(), lidar.x.max())
-    print('above was x, now printing y')
-    print(lidar.y.min(), lidar.y.max())
-    print('now printing z')
-    print(lidar.z.min(), lidar.z.max())
+    if display_metadata:
+        print(lidar_data.x.min(), lidar_data.x.max())
+        print('above was x, now printing y')
+        print(lidar_data.y.min(), lidar_data.y.max())
+        print('now printing z')
+        print(lidar_data.z.min(), lidar_data.z.max())
+        #print(dir(lidar_opened.header))
+        # Access header information
+        header = lidar_data.header
+        print("Header information:")
+        print("Number of points:", header.point_count)
+        print("Point format:", header.point_format)
+        print("scales:", header.scales, header.y_scale, header.z_offset)
+        print('crs????')
+        print(header.parse_crs()) # doesn't exist as an attribute
+        #print(dir(header))
+    
+    return lidar_data
 
-    x_pts = lidar.x
-    y_pts = lidar.y
-    print(x_pts[0], y_pts)
+def transform_pointcloud_and_extract_plot(A, b, lidar_data, plot_json, index, folder=None, debug=False):
+    """
+    A and b are transformation matrices. Not needed, since points are already in NAD83 UTM16. 
 
-    #print(dir(lidar_opened.header))
-    # Access header information
-    header = lidar.header
-    print("Header information:")
-    print("Number of points:", header.point_count)
-    print("Point format:", header.point_format)
-    print("scales:", header.scales, header.y_scale, header.z_offset)
-    print('crs????')
-    print(header.parse_crs()) # doesn't exist as an attribute
-    #print(dir(header))
+    lidar_data is a .las file opened.
 
+    plot_json is a json with information about NAD 83 UTM 16 coordinates 
+    """
+    x_pts = np.array(lidar_data.x)
+    y_pts = np.array(lidar_data.y)
+    z_pts = np.array(lidar_data.z)
+    if debug:
+        print(x_pts, y_pts)
+        print(x_pts.shape, y_pts.shape)
+        print(lidar_data.header.point_count)
 
+    x0, y0, x1, y1, plot_id, row= load_individual_plot_xyxy(plot_json, index, field = 'hips_2021')
+    if debug:
+        print(x0, y0, x1, y1, plot_id, row)
+    indices_within_boundary = (x_pts >= x0) & (x_pts <= x1) & (y_pts >= y0) & (y_pts <= y1) & (z_pts > -9999)  
+    cropped_plot_points = lidar_data.points[indices_within_boundary]
 
-    points = lidar.points
+    return cropped_plot_points
 
-    if visualize:
-        fig = plt.figure(figsize=(10, 8))
-        ax = fig.add_subplot(111, projection='3d')
+def visualize_lidar_points(lidar_data, filename='lidar.jpg', save=False):
+    x = lidar_data.x
+    y = lidar_data.y
+    z = lidar_data.z
 
-        # Plot the points
-        ax.scatter(points['x'], points['y'], points['z'], s=0.1, c=points['z'], cmap='viridis')
+    fig = plt.figure(figsize=(10, 8))
+    ax = fig.add_subplot(111, projection='3d')
 
-        # Set labels and title
-        ax.set_xlabel('X')
-        ax.set_ylabel('Y')
-        ax.set_zlabel('Z')
-        ax.set_title('LiDAR Point Cloud Visualization')
+    # Plot the points
+    sc = ax.scatter(x, y, z, s=0.5, c=z, cmap='viridis') # s is the size of the point in the plot. c controls which point to base cmap on.
+    ax.set_box_aspect([1, (np.max(y) - np.min(y))/(np.max(x)-np.min(x)), 1])
 
-        fig.savefig('lidar.jpg')
+    # Set labels and title
+    ax.set_xlabel('X', fontsize=6)
+    ax.set_ylabel('Y', fontsize=6)
+    ax.set_zlabel('Z', fontsize=6)
+    ax.set_title('LiDAR Point Cloud Visualization')
+    # Set tick label size
+    ax.tick_params(axis='x', labelsize=6)
+    ax.tick_params(axis='y', labelsize=6)
+    ax.tick_params(axis='z', labelsize=6)
+    # Disable scientific notation for tick labels
+    ax.xaxis.set_major_formatter(ScalarFormatter(useMathText=True))
+    ax.yaxis.set_major_formatter(ScalarFormatter(useMathText=True))
+    ax.zaxis.set_major_formatter(ScalarFormatter(useMathText=False))
+
+    # Show elevation scale:
+    cbar = fig.colorbar(sc, shrink=0.5)
+    cbar.set_label('Z Value', rotation=270, labelpad=10)
+
+    if save:
+        fig.savefig(filename)
 
 if __name__ == "__main__":
     # code to save .npy hyp and freq for 20220831:
@@ -480,17 +513,34 @@ if __name__ == "__main__":
 
     do_hyp = False
 
-    #open_and_visualize_lidar()
+
+    # Flow to extract LiDAR pt cloud around a plot # 
     lidar_path_local_all = '/Users/alim/Documents/prototyping/research_lab/HIPS_LiDAR/'
     local_dirs = os.listdir(lidar_path_local_all)
     local_dirs.remove('.DS_Store')
     local_dirs.sort()
     print(local_dirs)
+    
+
+
+
     for folder in local_dirs:
+        print('in folder', folder)
+        if folder[0:4] == '2021':
+            field = 'hips_2021'
+        if folder[0:4] == '2022':
+            field = 'hips_2022'
+        plot_json = load_plots_coords_for_field(field=field, geo_coords=True)
         file_in_folder = os.listdir(lidar_path_local_all + folder)
         print(file_in_folder)
         full_lidar_fp = lidar_path_local_all + folder + '/' + file_in_folder[0]
-        open_and_visualize_lidar(full_lidar_fp)
+        lidar_data = open_and_visualize_lidar(full_lidar_fp)
+        A = b = 0
+        for i in range(0,200):
+            cropped_points = transform_pointcloud_and_extract_plot(A, b, lidar_data, plot_json, index = i)
+        #visualize_lidar_points(cropped_points, 'cropped_lidar_test.jpg', save=False)
+
+
 
     
     if do_hyp:
