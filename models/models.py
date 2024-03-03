@@ -263,6 +263,42 @@ class Transformer(nn.Module):
         self.some = 'placeholder'
         # consider using class from pytorch: https://pytorch.org/docs/stable/generated/torch.nn.Transformer.html
 
+class HyperspectralAE(nn.Module):
+    """
+    Class for hyperspectral autoencoder. Used for a feature extractor. 
+    """
+    def __init__(self, input_channels, height, width):
+        super(HyperspectralAE, self).__init__()
+        self.input_channels =input_channels
+        self.height = height
+        self.width = width
+        self.conv1 = nn.Conv2d(in_channels = input_channels, out_channels = input_channels * 2, 
+                                kernel_size= 5)
+        self.relu = nn.ReLU()
+        self.conv2 = nn.Conv2d(in_channels= input_channels * 2, out_channels = input_channels * 4, kernel_size=5)
+
+
+    def encoder(self, x):
+        # code to push to latent dimension
+        x = self.conv1(x)
+        print(self.conv1.weight.shape)
+        x = self.relu(x)
+        x = self.conv2(x)
+        x = self.relu(x)
+        x = torch.flatten(x)
+        print(x.shape)
+        x 
+
+        return x
+
+    def decoder(self):
+        # code to push back up to image size
+        return 0
+
+    def forward(self, x):
+        x = self.encoder(x)
+        return x 
+
 
 class statistical_model():
     def __init__(self, debug=False, produce_plot=False, produce_metrics=True, cross_validation=False,

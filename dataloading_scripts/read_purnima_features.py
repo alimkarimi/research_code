@@ -23,11 +23,13 @@ def get_svr_features(debug=False, data_path='2022_f54'):
     - HIPS 2022 is field 78
     - Used for different genotype experiments with the same nitrogen treatment.
     - Plot 4351 - 4394 are hybrid in 2021, rest are inbred
+    - Plots range from 4351 - 4438
     - Pedigree information is in HIPS_YS_2021.xlsx
 
     For HIPS in 2022 only:
      - input 'hips_2022' as the arg to data_path
      - Plot 6351 - 6494 are hybrid in 2022, rest are inbred. 
+     - Plots range from 6451 - 6538
      - Pedigree information is in '2022 YS_HIPS_BCS all data.xlsx'
 
     For HIPS in 2021 and 2022:

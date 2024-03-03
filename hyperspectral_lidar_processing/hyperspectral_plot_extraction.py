@@ -388,7 +388,7 @@ def main_hyperspectral_orchestrator():
             A_inv, b_inv = get_inverse_transformation_matrix(ds)
             # do the transform on an image coordinate:
 
-            for i in range(150, 200): # update this range to get all fields.
+            for i in range(100, 277): # update this range to get all fields.
                 output_bools, cropped_plot, entire_field = transform_image_and_extract_plot(A_inv, b_inv, np_img_coords=hyp, 
                 plot_json=plot_data, index=i, folder=folder, freq=freq, field='hips_2021', loop=False, direct=False, use_px_coords = True, save=True)
                 hyp_plot_li.append(cropped_plot)
@@ -414,7 +414,7 @@ def main_hyperspectral_orchestrator():
             print('got transformations')
             # do the transform on an image coordinate:
 
-            for i in range(150, 200): # update this range to get all fields.
+            for i in range(100, 277): # update this range to get all fields.
                 output_bools, cropped_plot, entire_field = transform_image_and_extract_plot(A_inv, b_inv, np_img_coords=hyp, 
                 plot_json=plot_data, index=i, folder=folder, freq=freq, field='hips_2022', loop=False, direct=False, use_px_coords = True, save=True)
                 hyp_plot_li.append(cropped_plot)
@@ -511,34 +511,37 @@ if __name__ == "__main__":
         base_path = '/Users/alim/Documents/prototyping/research_lab/HIPS_Hyperspectral/20220831/'
         read_hyperspectral_data(folder='20220831', path = base_path + '20220831_rgb_lidar_vnir_44m_1202_vnirMosaic_4cm')
 
-    do_hyp = False
+    do_hyp = True
+    do_lidar=False
+
+    if do_lidar:
 
 
-    # Flow to extract LiDAR pt cloud around a plot # 
-    lidar_path_local_all = '/Users/alim/Documents/prototyping/research_lab/HIPS_LiDAR/'
-    local_dirs = os.listdir(lidar_path_local_all)
-    local_dirs.remove('.DS_Store')
-    local_dirs.sort()
-    print(local_dirs)
-    
+        # Flow to extract LiDAR pt cloud around a plot # 
+        lidar_path_local_all = '/Users/alim/Documents/prototyping/research_lab/HIPS_LiDAR/'
+        local_dirs = os.listdir(lidar_path_local_all)
+        local_dirs.remove('.DS_Store')
+        local_dirs.sort()
+        print(local_dirs)
+        
 
 
 
-    for folder in local_dirs:
-        print('in folder', folder)
-        if folder[0:4] == '2021':
-            field = 'hips_2021'
-        if folder[0:4] == '2022':
-            field = 'hips_2022'
-        plot_json = load_plots_coords_for_field(field=field, geo_coords=True)
-        file_in_folder = os.listdir(lidar_path_local_all + folder)
-        print(file_in_folder)
-        full_lidar_fp = lidar_path_local_all + folder + '/' + file_in_folder[0]
-        lidar_data = open_and_visualize_lidar(full_lidar_fp)
-        A = b = 0
-        for i in range(0,200):
-            cropped_points = transform_pointcloud_and_extract_plot(A, b, lidar_data, plot_json, index = i)
-        #visualize_lidar_points(cropped_points, 'cropped_lidar_test.jpg', save=False)
+        for folder in local_dirs:
+            print('in folder', folder)
+            if folder[0:4] == '2021':
+                field = 'hips_2021'
+            if folder[0:4] == '2022':
+                field = 'hips_2022'
+            plot_json = load_plots_coords_for_field(field=field, geo_coords=True)
+            file_in_folder = os.listdir(lidar_path_local_all + folder)
+            print(file_in_folder)
+            full_lidar_fp = lidar_path_local_all + folder + '/' + file_in_folder[0]
+            lidar_data = open_and_visualize_lidar(full_lidar_fp)
+            A = b = 0
+            for i in range(0,200):
+                cropped_points = transform_pointcloud_and_extract_plot(A, b, lidar_data, plot_json, index = i)
+            #visualize_lidar_points(cropped_points, 'cropped_lidar_test.jpg', save=False)
 
 
 
