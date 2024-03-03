@@ -92,11 +92,12 @@ def load_individual_plot_xyxy(plot_json, index, field):
 
 
 if __name__ == "__main__":
-    field = 'hips_2022'
+    field = 'hips_2021'
     data = load_plots_coords_for_field(field=field, geo_coords=True)
     #print(data)
     print(len(data['features']))
     num_feats = len(data['features'])
     x0, y0, x1, y1, _, __= load_individual_plot_xyxy(data, 2, field = field)
-    for i in range(100):
-        print(load_individual_plot_xyxy(data, i, field= field))
+    for i in range(0,277):
+        out = load_individual_plot_xyxy(data, i, field= field)
+        print(out)
