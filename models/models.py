@@ -272,22 +272,48 @@ class HyperspectralAE(nn.Module):
         self.input_channels =input_channels
         self.height = height
         self.width = width
-        self.conv1 = nn.Conv2d(in_channels = input_channels, out_channels = input_channels * 2, 
-                                kernel_size= 5)
+        #self.conv_out_shape_row = ((in_rows + 2*p - k) / stride) + 1
+        #self.conv_out_shape_col = ((in_cols + 2*p - k) / stride) + 1
+        # input data is 130 rows by 42 cols. Stride is 1, kernel is 5, padding is 0. Therefore, after the first conv:
+        # row shape is (130 + 0 - 5 / 1 ) + 1 = 126
+        # col shape is (42 + 0 - 5) / 1) + 1  = 38
+        self.conv1 = nn.Conv2d(in_channels = input_channels, out_channels = input_channels, kernel_size= 3)
         self.relu = nn.ReLU()
-        self.conv2 = nn.Conv2d(in_channels= input_channels * 2, out_channels = input_channels * 4, kernel_size=5)
+        self.conv2 = nn.Conv2d(in_channels= input_channels, out_channels = input_channels, kernel_size=3)
+
+        self.conv_output_dims = (input_channels, height - 3 + 1, width - 3 + 1)
+        self.conv_output_dims_2 = (self.conv_output_dims[0], self.conv_output_dims[1] + 0 - 3 + 1, self.conv_output_dims[2] + 0 - 3 + 1)
+        self.conv_output_dims_2_total_dims = int(self.conv_output_dims_2[0] * self.conv_output_dims_2[1] * self.conv_output_dims_2[2])
+        print(self.conv_output_dims_2_total_dims, 'total_dims!') # 651168
+        self.fc = nn.Linear(651168, 1000)
+        print('here')
+        self.fc2 = nn.Linear(1000, 500)
+
+        self.fc3 = nn.Linear(500, 1000)
+        self.fc4 = nn.Linear(1000, 651158)
+
+        self.tran_conv1 = nn.ConvTranspose2d(in_channels=136, out_channels=136, )
+        # result is row/col x kernel - 1
+
 
 
     def encoder(self, x):
         # code to push to latent dimension
         x = self.conv1(x)
         print(self.conv1.weight.shape)
+        print('after first conv:', x.shape, 'is it 272 x 126 x 17??')
         x = self.relu(x)
         x = self.conv2(x)
         x = self.relu(x)
         x = torch.flatten(x)
+        print('at flatten')
         print(x.shape)
-        x 
+        x = self.fc(x)
+        x = self.relu(x)
+        x = self.fc2(x)
+
+
+        print(x.shape)
 
         return x
 
