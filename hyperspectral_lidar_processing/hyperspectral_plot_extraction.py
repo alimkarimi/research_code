@@ -511,8 +511,8 @@ if __name__ == "__main__":
         base_path = '/Users/alim/Documents/prototyping/research_lab/HIPS_Hyperspectral/20220831/'
         read_hyperspectral_data(folder='20220831', path = base_path + '20220831_rgb_lidar_vnir_44m_1202_vnirMosaic_4cm')
 
-    do_hyp = True
-    do_lidar=False
+    do_hyp = False
+    do_lidar=True
 
     if do_lidar:
 
@@ -539,8 +539,15 @@ if __name__ == "__main__":
             full_lidar_fp = lidar_path_local_all + folder + '/' + file_in_folder[0]
             lidar_data = open_and_visualize_lidar(full_lidar_fp)
             A = b = 0
-            for i in range(0,200):
+            for i in range(100,277): # 100 to 277 are the idxs of the plots in the experiment, as represented in the plot_json
                 cropped_points = transform_pointcloud_and_extract_plot(A, b, lidar_data, plot_json, index = i)
+
+                out = load_individual_plot_xyxy(plot_json=plot_json, field=field, index=i)
+                x0, y0, x1, y1, plot, row = out
+                print('row:', row)
+                print('plot:', plot)
+                break
+            break
             #visualize_lidar_points(cropped_points, 'cropped_lidar_test.jpg', save=False)
 
 
