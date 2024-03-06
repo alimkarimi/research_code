@@ -116,8 +116,8 @@ class FeaturesDataset(torch.utils.data.Dataset):
         return train_or_test_features, ground_truth_LAI
 
 if __name__ == "__main__":
-    training_data = FeaturesDataset(field = 'hips_2021', train=True, test=False)
-    testing_data  = FeaturesDataset(field = 'hips_2022', train=True, test=False)
+    training_data = FeaturesDataset(field = 'hips_both_years', train=True, test=False)
+    testing_data  = FeaturesDataset(field = 'hips_both_years', train=True, test=False)
 
     training_dataloader = torch.utils.data.DataLoader(training_data, batch_size=1, num_workers = 0, drop_last=False)
     testing_datalodaer  = torch.utils.data.DataLoader(testing_data,  batch_size=1, num_workers = 0, drop_last=False)

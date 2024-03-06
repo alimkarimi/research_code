@@ -175,6 +175,8 @@ class FeaturesDataset(torch.utils.data.Dataset):
 
             path_row_1 = self.df.iloc[index]['hyp_path_p1']
             path_row_2 = self.df.iloc[index]['hyp_path_p2']
+            freq_path = path_row_2[0:-10] + 'numpy_freq.npy'
+            freq_data = np.load(freq_path)
 
             ground_truth_LAI = self.df.iloc[index]['LAI']
 
@@ -200,14 +202,16 @@ class FeaturesDataset(torch.utils.data.Dataset):
             # stack row plots together:
             stacked_rows = np.concatenate((resized_img_row_1, resized_img_row_2), axis=2) 
 
-            return stacked_rows, ground_truth_LAI # stacked rows is the hyperspectral data.
+            return stacked_rows, ground_truth_LAI, freq_data # stacked rows is the hyperspectral data.
 
 
 if __name__ == '__main__':
     #train_test_split_for_dataloading(field='hips_2021')
     training_data = FeaturesDataset(field = 'hips_2021', train=True, test=False, debug=True, load_individual=True, load_series=False)
-    training_dataloader = torch.utils.data.DataLoader(training_data, batch_size=1, num_workers = 0, drop_last=False)
+    training_dataloader = torch.utils.data.DataLoader(training_data, batch_size=1, num_workers = 0, drop_last=False,
+                                                        shuffle = True)
     print('len is', training_data.__len__())
     for n, i in enumerate(training_dataloader):
-        print(i[0].shape, i[1].shape)
+        print(i[0].shape, i[1].shape, i[2].shape)
         print(n)
+        break
