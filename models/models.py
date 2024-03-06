@@ -190,7 +190,7 @@ class LSTM_concat_based(nn.Module):
         # print('shape of ct_minus_1:', ct_minus_1.shape)
         # print('shape of ht_minus_1', ht_minus_1.shape)
         feature_concat = torch.concat([ht_minus_1, xt])
-        feature_concat = feature_concat.double()
+        feature_concat = feature_concat.to(torch.float32)
 
         # forget gate - what we want to forget from cell state
         ft = self.sigmoid(self.Wf(feature_concat))
@@ -238,14 +238,15 @@ class RNN(nn.Module):
     def forward(self, timeseries):
         # timeseries will have to come from the pytorch dataloader. It is a series of xt where t = {0, 1, ... k-1, k}, where k 
         # is the number of observations in the time series.
-        predictions_in_series = torch.empty((timeseries.shape[0], self.batch_size), dtype=torch.float64) # length of timeseries x batch_size
+        predictions_in_series = torch.empty((timeseries.shape[0], self.batch_size), device = "mps", dtype=torch.float32) # length of timeseries x batch_size
         for n, xt in enumerate(timeseries):
             if n == 0:
                 if self.debug:
                     print('xt shape:', xt.shape)
                     print('lstm.hidden_size', self.lstm.hidden_size)
-                ht_minus_1 = torch.zeros((self.lstm.hidden_size)) # size 100
-                ct_minus_1 = torch.zeros((self.lstm.cell_size)) # size 100
+                ht_minus_1 = torch.zeros((self.lstm.hidden_size), device = "mps", dtype = torch.float32) # size 100
+                ct_minus_1 = torch.zeros((self.lstm.cell_size), device = "mps", dtype= torch.float32) # size 100
+
                 ht, ct = self.lstm(xt, ct_minus_1, ht_minus_1)
                 pred = self.fc(self.relu(ht))
                 predictions_in_series[n] = pred
@@ -267,62 +268,94 @@ class HyperspectralAE(nn.Module):
     """
     Class for hyperspectral autoencoder. Used for a feature extractor. 
     """
-    def __init__(self, input_channels, height, width):
+    def __init__(self, input_channels, height, width, debug=False):
         super(HyperspectralAE, self).__init__()
         self.input_channels =input_channels
         self.height = height
         self.width = width
+        self.debug = debug
         #self.conv_out_shape_row = ((in_rows + 2*p - k) / stride) + 1
         #self.conv_out_shape_col = ((in_cols + 2*p - k) / stride) + 1
         # input data is 130 rows by 42 cols. Stride is 1, kernel is 5, padding is 0. Therefore, after the first conv:
         # row shape is (130 + 0 - 5 / 1 ) + 1 = 126
         # col shape is (42 + 0 - 5) / 1) + 1  = 38
-        self.conv1 = nn.Conv2d(in_channels = input_channels, out_channels = input_channels, kernel_size= 3)
+        
+        self.conv1 = nn.Conv2d(in_channels = input_channels, out_channels = int(input_channels / 2), kernel_size= 3)
         self.relu = nn.ReLU()
-        self.conv2 = nn.Conv2d(in_channels= input_channels, out_channels = input_channels, kernel_size=3)
+        self.conv2 = nn.Conv2d(in_channels= int(input_channels / 2), out_channels = int(input_channels / 4), kernel_size=3)
+        self.maxpool = nn.MaxPool2d(kernel_size=2, return_indices=True)
+        self.maxunpool = nn.MaxUnpool2d(kernel_size = 2)
 
-        self.conv_output_dims = (input_channels, height - 3 + 1, width - 3 + 1)
-        self.conv_output_dims_2 = (self.conv_output_dims[0], self.conv_output_dims[1] + 0 - 3 + 1, self.conv_output_dims[2] + 0 - 3 + 1)
+        self.conv_output_dims = (input_channels // 2, height - 3 + 1, width - 3 + 1)
+        self.conv_output_dims_2 = (self.conv_output_dims[0] // 2, self.conv_output_dims[1] + 0 - 3 + 1, self.conv_output_dims[2] + 0 - 3 + 1)
         self.conv_output_dims_2_total_dims = int(self.conv_output_dims_2[0] * self.conv_output_dims_2[1] * self.conv_output_dims_2[2])
-        print(self.conv_output_dims_2_total_dims, 'total_dims!') # 651168
-        self.fc = nn.Linear(651168, 1000)
-        print('here')
+        print(self.conv_output_dims_2_total_dims, 'total_dims!') # 162,792
+        self.fc = nn.Linear(9486, 1000)
         self.fc2 = nn.Linear(1000, 500)
 
         self.fc3 = nn.Linear(500, 1000)
-        self.fc4 = nn.Linear(1000, 651158)
+        self.fc4 = nn.Linear(1000, 9486)
 
-        self.tran_conv1 = nn.ConvTranspose2d(in_channels=136, out_channels=136, )
+
+        self.transpose_conv1 = nn.ConvTranspose2d(in_channels=int(input_channels/4), out_channels=int(input_channels/2), kernel_size=3)
+        self.transpose_conv2 = nn.ConvTranspose2d(in_channels=int(input_channels/2), out_channels=136, kernel_size=3)
         # result is row/col x kernel - 1
-
-
-
+        if debug:
+            print('all weights initialized...')
+        
     def encoder(self, x):
         # code to push to latent dimension
         x = self.conv1(x)
-        print(self.conv1.weight.shape)
-        print('after first conv:', x.shape, 'is it 272 x 126 x 17??')
+        if self.debug:
+            print(self.conv1.weight.shape)
+            print('after first conv:', x.shape, 'is it 272 x 126 x 17??')
+        x, ind_mp1 = self.maxpool(x)
         x = self.relu(x)
         x = self.conv2(x)
+        x, ind_mp2 = self.maxpool(x)
         x = self.relu(x)
+        if self.debug:
+            print('shape after second conv:', x.shape)
+            print('indices of maxpool', ind_mp1, ind_mp2)
         x = torch.flatten(x)
-        print('at flatten')
-        print(x.shape)
+        if self.debug:
+            print('at flatten')
+            print(x.shape)
         x = self.fc(x)
         x = self.relu(x)
         x = self.fc2(x)
+        if self.debug:
+            print('end of encoder shape:' , x.shape)
+        return x, ind_mp1, ind_mp2
 
+    def decoder(self, x, ind_mp1, ind_mp2):
 
-        print(x.shape)
+        # code to push back up to image size
+        
+        x = self.fc3(x)
+        x = self.relu(x)
+        x = self.fc4(x)
+        if self.debug:
+            print('in decoder - shp is', x.shape)
+        
+        
+        # reshape vector back to image shape to do transpose conv ops:
+        x = x.reshape(34, 31, 9)
+        x = self.maxunpool(x, ind_mp2)
+
+        x = self.transpose_conv1(x)
+        x = self.relu(x)
+
+        x = self.maxunpool(x, ind_mp1)
+        x = self.transpose_conv2(x)
+        if self.debug:
+            print('at end of network w/ shape', x.shape)
 
         return x
 
-    def decoder(self):
-        # code to push back up to image size
-        return 0
-
     def forward(self, x):
-        x = self.encoder(x)
+        x, ind_mp1, ind_mp2 = self.encoder(x)
+        x = self.decoder(x, ind_mp1, ind_mp2)
         return x 
 
 

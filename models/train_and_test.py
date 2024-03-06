@@ -18,17 +18,38 @@ epochs = 20
 criterion = nn.MSELoss()
 batch_size = 1
 
+torch.manual_seed(0)
+np.random.seed(0)
+
 # instantiate model
 rnn  = RNN(batch_size = batch_size, concat_based_LSTM = True, addition_based_LSTM = False,
            hidden_size = 100, cell_size = 100) # lstm gets instantiated inside RNN class.
-rnn = rnn.double()
+rnn = rnn.to(torch.float32)
 
 # instantiate optimizer
 optimizer = torch.optim.Adam(rnn.parameters(), lr = 1e-3, betas = (0.9, 0.99))
 
+cpu_override = False
+
+if torch.backends.mps.is_available():
+    device = torch.device("mps")
+    rnn = rnn.to(device)
+    print('USING DEVICE:', device)
+else:
+    device = torch.device("cpu")
+    rnn = rnn.to(device)
+    print('USING DEVICE:', device)
+
+if cpu_override:
+    print('CUSTOM OVERRIDE TO CPU EVEN THOUGH GPU IS AVAILABLE')
+    device = torch.device("cpu")
+    rnn = rnn.to("cpu")
+
+
+
 # instantiate dataset
-training_data = FeaturesDataset(field = 'hips_both_years', train=True, test=False)
-testing_data     = FeaturesDataset(field = 'hips_both_years', train=False, test=True)
+training_data = FeaturesDataset(field = 'hips_2021', train=True, test=False)
+testing_data     = FeaturesDataset(field = 'hips_2021', train=False, test=True)
 
 # instantiate dataloaders for train/test
 training_dataloader = torch.utils.data.DataLoader(training_data, batch_size=1, num_workers = 0, drop_last=False, shuffle=True)
@@ -49,19 +70,26 @@ def test_after_epoch():
     for n, testing_sample in enumerate(testing_datalodaer):
         features, GT = testing_sample
 
+        if device == torch.device("mps") or device == torch.device("cuda"): # handle input to GPU
+            features = features.to(torch.float32) 
+            features = features.to(device)
+
+            # if input and network are in float32, we want to move the GT to float 32 as well
+            # because we want precision of input/target in loss computation to be the same:
+            GT = GT.to(torch.float32)
+            GT = GT.to(device) # move GT to GPU
+
         features = torch.squeeze(features, 0)
-        features = features.double()
 
         GT = torch.squeeze(GT, 0)
-        GT = GT.to(torch.float64)
         
         out = rnn(features)
         _, _, final_pred, all_pred = out
         # print(final_pred.shape, all_pred.shape)
         # print(GT.shape)
         for x in range(GT.shape[0]):
-            y_true.append(float(GT[x].detach().numpy())) # append y_true to list.
-            y_pred.append(float(all_pred[x].detach().numpy())) # append y_pred to list
+            y_true.append(float(GT[x].cpu().detach().numpy())) # append y_true to list.
+            y_pred.append(float(all_pred[x].cpu().detach().numpy())) # append y_pred to list
 
         # the lists above will be needed to compute r_2_avgs and rmse_avgs after the entire testing sample is iterated through.
 
@@ -85,17 +113,25 @@ for epoch in range(epochs):
         optimizer.zero_grad()
 
         features, GT = timeseries
+        if device == torch.device("mps") or device == torch.device("cuda"): # handle input to GPU
+            features = features.to(torch.float32) 
+            features = features.to(device)
 
+            # if input and network are in float32, we want to move the GT to float 32 as well
+            # because we want precision of input/target in loss computation to be the same:
+            GT = GT.to(torch.float32)
+            GT = GT.to(device) # move GT to GPU
+        
         features = torch.squeeze(features, 0)
-        features = features.double()
-
         GT = torch.squeeze(GT, 0)
-        GT = GT.to(torch.float64)
+        
+        
         
         out = rnn(features)
+        
         _, _, final_pred, all_pred = out
 
-        loss = criterion(all_pred, GT)
+        loss = criterion(all_pred, GT) # compute loss - should be on same device
         #print('loss is', loss)
 
         loss.backward() # compute gradient of loss wrt each parameter
