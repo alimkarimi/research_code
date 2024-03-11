@@ -24,7 +24,8 @@ from PIL import Image
 import sys
 sys.path.append('..')
 
-from dataloading_scripts.load_plots import load_plots_coords_for_field, load_individual_plot_xyxy, plot_path_2022_hips, plot_path_2021_hips
+from dataloading_scripts.load_plots import (load_plots_coords_for_field, 
+load_individual_plot_xyxy, plot_path_2022_hips, plot_path_2021_hips, load_entire_plot_xyxy)
 
 print('imported')
 
@@ -194,7 +195,7 @@ def get_transformation_matrix(ds = ds):
     return A, b
 
 def transform_image_and_extract_plot(A, b, np_img_coords, plot_json, index, folder, freq, field, loop=False, direct=False, 
-                                    use_px_coords = True, debug=False, save=False):
+                                    use_px_coords = True, extract_both_rows = True, debug=False, save=False):
     """
     This function expects a np object with hyperspectral data to generate an empty np array with the right rows/cols shape.
     Each index in the numpy array will be linearly transformed using the A and b parameters. This transform represents 
@@ -213,14 +214,19 @@ def transform_image_and_extract_plot(A, b, np_img_coords, plot_json, index, fold
     # irrelevant for this transformation.
     plot_json = load_plots_coords_for_field(field=field) # load plot json for the image.
 
-    x0, y0, x1, y1, plot_id, plot_row = load_individual_plot_xyxy(plot_json=plot_json, index=index, field=field) # get the boundaries for the plot
-    print(x0, y0,' this is x0 and y0')
-    print(A, b)
-    b = b.reshape(2,1)
-    x0y0 = A @ np.array([[x0], [y0]]).reshape(2,1) + b
-    x1y1 = A @ np.array([[x1], [y1]]).reshape(2,1) + b
-    print(x0y0, '\ninverted to pixel coords!!')
-    print(x1y1)
+    if extract_both_rows:
+        x0, y0, x1, y1, queried_plot_id = load_entire_plot_xyxy(plot_json, plot_id_query, field)
+        # update so that we iterate through plot_ids instead of index??
+        # need to think about this. 
+    else:
+        x0, y0, x1, y1, plot_id, plot_row = load_individual_plot_xyxy(plot_json=plot_json, index=index, field=field) # get the boundaries for the plot
+        print(x0, y0,' this is x0 and y0')
+        print(A, b)
+        b = b.reshape(2,1)
+        x0y0 = A @ np.array([[x0], [y0]]).reshape(2,1) + b
+        x1y1 = A @ np.array([[x1], [y1]]).reshape(2,1) + b
+        print(x0y0, '\ninverted to pixel coords!!')
+        print(x1y1)
 
     if use_px_coords:
         # this option is to use the inverse transform, and appy operations directly on pixel coordiantes. 
