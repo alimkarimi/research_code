@@ -90,6 +90,28 @@ def load_individual_plot_xyxy(plot_json, index, field):
         #print(x0, y0, x1, y1)
         return x0, y0, x1, y1, plot_id, plot_row
 
+def load_entire_plot_xyxy(plot_json, plot_id_query, field):
+    # get all rows that belong to a plot.
+    """
+    Gets the convex hull of both rows
+    """
+
+    matches = []
+
+    for i in range(100,277):
+        out = load_individual_plot_xyxy(plot_json, i, field)
+        x0, y0, x1, y1, plot_id, plot_row = out
+        if plot_id_query == plot_id:
+            matches.append(out)
+
+    #print(matches[0]) # western plot
+    #print(matches[1]) # eastern plot
+    west_x0, west_y0, a, b, c, d = matches[0] # a, b, c, d are dummy vars
+    east_x1, east_y1, e, f, g, h = matches[1] # e, f, g, h are dummy vars
+
+    return west_x0, west_y0, east_x1, east_y1, plot_id_query
+            
+
 
 if __name__ == "__main__":
     field = 'hips_2021'
@@ -101,3 +123,6 @@ if __name__ == "__main__":
     for i in range(0,277):
         out = load_individual_plot_xyxy(data, i, field= field)
         print(out)
+
+    matches = load_entire_plot_xyxy(data, plot_id_query = 4400, field = 'hips_2021')
+    print(matches)

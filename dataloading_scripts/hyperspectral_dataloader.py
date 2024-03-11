@@ -7,6 +7,7 @@ from dataloading_scripts.load_plots import (load_plots_coords_for_field, load_in
 plot_path_2022_hips, plot_path_root)
 from dataloading_scripts.append_hyper_lidar_to_df import append_hyperspectral_paths
 from skimage.transform import rescale, resize
+from torchvision import transforms as tvt
 
 from PIL import Image
 import skimage
@@ -23,7 +24,7 @@ from sklearn.model_selection import StratifiedGroupKFold
 
 # best to use logic from feature dataloader and append image paths. 
 
-
+channel_means = np.load('/Users/alim/Documents/prototyping/research_lab/research_code/analysis/channel_means.npy')[:136]
 
 def train_test_split_for_dataloading(debug=False, field = 'hips_2021'):
 
@@ -85,6 +86,8 @@ class FeaturesDataset(torch.utils.data.Dataset):
         self.plots = self.df['Plot'].unique()
         print('unique plot are', self.plots)
         self.field = field
+
+        # compute the mean for each channel in the training dataset. This will be used to do find the mean centering transoform.
         
 
     def __len__(self):

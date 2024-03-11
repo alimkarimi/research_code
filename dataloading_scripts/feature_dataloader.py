@@ -66,8 +66,13 @@ class FeaturesDataset(torch.utils.data.Dataset):
     def __init__(self, field : str, train : bool, test : bool):
         super(FeaturesDataset).__init__()
 
+        self.train = train
+        self.test = test
+
         # get df of features from the field provided in the constructor
         self.df, train_indices, test_indices = train_test_split_for_dataloading(field = field)
+        self.train_indices = train_indices
+        self.test_indices = test_indices
         if train:
             self.df = self.df.iloc[train_indices, :]
         if test:
@@ -81,9 +86,13 @@ class FeaturesDataset(torch.utils.data.Dataset):
         self.plots = self.df['Plot'].unique()
         self.field = field
         
+        print(len(train_indices), "length of TRAINING")
+        print(len(test_indices), "LENGTH OF TEST")
+        
 
     def __len__(self):
-        return self.num_plots
+        # return number of unique plots, as we will want to train an LSTM based on an entire time series
+        return len(self.plots)
 
     def __getitem__(self, index, debug=False):
         # to do: add stratification logic into this __getitem__ method.
@@ -117,7 +126,7 @@ class FeaturesDataset(torch.utils.data.Dataset):
 
 if __name__ == "__main__":
     training_data = FeaturesDataset(field = 'hips_both_years', train=True, test=False)
-    testing_data  = FeaturesDataset(field = 'hips_both_years', train=True, test=False)
+    testing_data  = FeaturesDataset(field = 'hips_both_years', train=False, test=True)
 
     training_dataloader = torch.utils.data.DataLoader(training_data, batch_size=1, num_workers = 0, drop_last=False)
     testing_datalodaer  = torch.utils.data.DataLoader(testing_data,  batch_size=1, num_workers = 0, drop_last=False)
