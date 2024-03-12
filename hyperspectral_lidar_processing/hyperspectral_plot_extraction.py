@@ -454,7 +454,7 @@ def open_and_visualize_lidar(lidar_file_path, display_metadata=False):
     
     return lidar_data
 
-def transform_pointcloud_and_extract_plot(A, b, lidar_data, plot_json, index, folder=None, debug=False):
+def transform_pointcloud_and_extract_plot(A, b, lidar_data, plot_json, index, field, folder=None, debug=False):
     """
     A and b are transformation matrices. Not needed, since points are already in NAD83 UTM16. 
 
@@ -470,7 +470,7 @@ def transform_pointcloud_and_extract_plot(A, b, lidar_data, plot_json, index, fo
         print(x_pts.shape, y_pts.shape)
         print(lidar_data.header.point_count)
 
-    x0, y0, x1, y1, plot_id, row= load_individual_plot_xyxy(plot_json, index, field = 'hips_2021')
+    x0, y0, x1, y1, plot_id, row= load_individual_plot_xyxy(plot_json, index, field = field)
     if debug:
         print(x0, y0, x1, y1, plot_id, row)
     indices_within_boundary = (x_pts >= x0) & (x_pts <= x1) & (y_pts >= y0) & (y_pts <= y1) & (z_pts > -9999)  
@@ -511,6 +511,52 @@ def visualize_lidar_points(lidar_data, filename='lidar.jpg', save=False):
     if save:
         fig.savefig(filename)
 
+def main_lidar_orchestrator():
+
+    # Flow to extract LiDAR pt cloud around a plot # 
+    # get local directories for iteration
+    lidar_path_local_all = '/Users/alim/Documents/prototyping/research_lab/HIPS_LiDAR/'
+    local_dirs = os.listdir(lidar_path_local_all)
+    local_dirs.remove('.DS_Store')
+    local_dirs.sort()
+    print(local_dirs)
+
+    for folder in local_dirs:
+        print('in folder', folder)
+        if folder[0:4] == '2021':
+            field = 'hips_2021'
+        if folder[0:4] == '2022':
+            field = 'hips_2022'
+        plot_json = load_plots_coords_for_field(field=field, geo_coords=True) # load plot json for all of 
+        # hips 2021 or 2022.
+        file_in_folder = os.listdir(lidar_path_local_all + folder) # list files for particular flight. 
+        print(file_in_folder)
+
+        # get .las file from that file_in_folder list.
+        las_file_idx = 0
+        for n, file in enumerate(file_in_folder):
+            if '.las' in file:
+                las_file_idx = n
+
+        full_lidar_fp = lidar_path_local_all + folder + '/' + file_in_folder[las_file_idx] 
+        lidar_data = open_and_visualize_lidar(full_lidar_fp)
+        A = b = 0
+        for i in range(100,277): # 100 to 277 are the idxs of the plots in the experiment, as represented in the plot_json
+            cropped_points = transform_pointcloud_and_extract_plot(A, b, lidar_data, plot_json, field = field, index = i)
+            # cropped points contain the x,y, and z points for the lidar file. 
+            x_pts = np.array(cropped_points.x)
+            y_pts = np.array(cropped_points.y)
+            z_pts = np.array(cropped_points.z)
+
+            xyz_pts_stacked = np.stack([x_pts, y_pts, z_pts], axis = 1) # create a stacked 
+            
+            # the plot and row info gathered here is for file naming purposes.
+            out = load_individual_plot_xyxy(plot_json=plot_json, field=field, index=i)
+            x0, y0, x1, y1, plot, row = out
+            print('saving pts in .npy for plot', plot, 'and row',row)
+            np.save(lidar_path_local_all + folder + '/lidar_xyz_' + str(plot) + '_' + str(row) + '.npy', xyz_pts_stacked)
+            #visualize_lidar_points(cropped_points, 'cropped_lidar_test.jpg', save=False)
+
 if __name__ == "__main__":
     # code to save .npy hyp and freq for 20220831:
     if not os.path.exists('/Users/alim/Documents/prototyping/research_lab/HIPS_Hyperspectral/20220831/' + 'numpy_hyp.npy'):
@@ -521,42 +567,7 @@ if __name__ == "__main__":
     do_lidar=True
 
     if do_lidar:
-
-
-        # Flow to extract LiDAR pt cloud around a plot # 
-        lidar_path_local_all = '/Users/alim/Documents/prototyping/research_lab/HIPS_LiDAR/'
-        local_dirs = os.listdir(lidar_path_local_all)
-        local_dirs.remove('.DS_Store')
-        local_dirs.sort()
-        print(local_dirs)
-        
-
-
-
-        for folder in local_dirs:
-            print('in folder', folder)
-            if folder[0:4] == '2021':
-                field = 'hips_2021'
-            if folder[0:4] == '2022':
-                field = 'hips_2022'
-            plot_json = load_plots_coords_for_field(field=field, geo_coords=True)
-            file_in_folder = os.listdir(lidar_path_local_all + folder)
-            print(file_in_folder)
-            full_lidar_fp = lidar_path_local_all + folder + '/' + file_in_folder[0]
-            lidar_data = open_and_visualize_lidar(full_lidar_fp)
-            A = b = 0
-            for i in range(100,277): # 100 to 277 are the idxs of the plots in the experiment, as represented in the plot_json
-                cropped_points = transform_pointcloud_and_extract_plot(A, b, lidar_data, plot_json, index = i)
-
-                out = load_individual_plot_xyxy(plot_json=plot_json, field=field, index=i)
-                x0, y0, x1, y1, plot, row = out
-                print('row:', row)
-                print('plot:', plot)
-                break
-            break
-            #visualize_lidar_points(cropped_points, 'cropped_lidar_test.jpg', save=False)
-
-
+        main_lidar_orchestrator()
 
     
     if do_hyp:
