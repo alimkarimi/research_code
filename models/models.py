@@ -268,12 +268,13 @@ class HyperspectralAE(nn.Module):
     """
     Class for hyperspectral autoencoder. Used for a feature extractor. 
     """
-    def __init__(self, input_channels, height, width, debug=False):
+    def __init__(self, input_channels, height, width, debug=False, encoder_only=False):
         super(HyperspectralAE, self).__init__()
         self.input_channels =input_channels
         self.height = height
         self.width = width
         self.debug = debug
+        self.encoder_only = encoder_only
         #self.conv_out_shape_row = ((in_rows + 2*p - k) / stride) + 1
         #self.conv_out_shape_col = ((in_cols + 2*p - k) / stride) + 1
         # input data is 130 rows by 42 cols. Stride is 1, kernel is 5, padding is 0. Therefore, after the first conv:
@@ -355,13 +356,16 @@ class HyperspectralAE(nn.Module):
 
     def forward(self, x):
         x, ind_mp1, ind_mp2 = self.encoder(x)
-        x = self.decoder(x, ind_mp1, ind_mp2)
+
+        if self.encoder_only == False:
+            x = self.decoder(x, ind_mp1, ind_mp2)
+
         return x 
 
 class LiDARAE(nn.Module):
-    def __init__(self):
+    def __init__(self, encoder_only = False):
         super(LiDARAE, self).__init__()
-
+        self.encoder_only = encoder_only
         latent_dim = 32
 
         # encoder ops
@@ -398,7 +402,9 @@ class LiDARAE(nn.Module):
 
     def forward(self, x):
         x = self.encoder(x)
-        x = self.decoder(x)
+
+        if self.encoder_only == False:
+            x = self.decoder(x)
         return x
 
 
