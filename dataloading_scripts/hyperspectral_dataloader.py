@@ -5,7 +5,7 @@ sys.path.append('..') # need this to access get_svr_features from training.py
 from dataloading_scripts.read_purnima_features import get_svr_features
 from dataloading_scripts.load_plots import (load_plots_coords_for_field, load_individual_plot_xyxy, plot_path_2021_hips, 
 plot_path_2022_hips, plot_path_root)
-from dataloading_scripts.append_hyper_lidar_to_df import append_hyperspectral_paths
+from dataloading_scripts.append_hyper_lidar_to_df import append_hyperspectral_lidar_paths
 from skimage.transform import rescale, resize
 from torchvision import transforms as tvt
 
@@ -13,6 +13,9 @@ from PIL import Image
 import skimage
 
 from sklearn.model_selection import StratifiedGroupKFold
+
+torch.manual_seed(0)
+np.random.seed(0)
 
 # build data loader that reads in hyperspectral data from local disk
 # then transforms that data to be mean centered and puts it into a nerual network.
@@ -28,7 +31,7 @@ channel_means = np.load('/Users/alim/Documents/prototyping/research_lab/research
 
 def train_test_split_for_dataloading(debug=False, field = 'hips_2021'):
 
-    df = append_hyperspectral_paths(field=field)
+    df = append_hyperspectral_lidar_paths(field=field)
     print(df.shape, 'output from append func!!')
 
     if field != '2022_f54': 
@@ -84,7 +87,7 @@ class FeaturesDataset(torch.utils.data.Dataset):
         self.num_plots = self.df['Plot'].unique().shape[0] # number of unique plots. We will need to pass features from each of these in a time series
         # to the model.
         self.plots = self.df['Plot'].unique()
-        print('unique plot are', self.plots)
+        #print('unique plot are', self.plots)
         self.field = field
 
         # compute the mean for each channel in the training dataset. This will be used to do find the mean centering transoform.
@@ -176,9 +179,15 @@ class FeaturesDataset(torch.utils.data.Dataset):
             # the intuition here is to just learn good features of the image, regardless of the 
             # point in the time series.
 
+            # First, get the Hyperspectral data:
             path_row_1 = self.df.iloc[index]['hyp_path_p1']
             path_row_2 = self.df.iloc[index]['hyp_path_p2']
+            #test_row_1 = self.df.loc[index, 'hyp_path_p2']
+            #print(test_row_1)
+            #print('path_row_2', path_row_2)
+            
             freq_path = path_row_2[0:-10] + 'numpy_freq.npy'
+
             freq_data = np.load(freq_path)
 
             ground_truth_LAI = self.df.iloc[index]['LAI']
@@ -205,16 +214,40 @@ class FeaturesDataset(torch.utils.data.Dataset):
             # stack row plots together:
             stacked_rows = np.concatenate((resized_img_row_1, resized_img_row_2), axis=2) 
 
-            return stacked_rows, ground_truth_LAI, freq_data # stacked rows is the hyperspectral data.
+            # We are done with Hyperspectral, now get LiDAR data:
+            # grab lidar paths:
+            lidar_path_row_1 = self.df.iloc[index]['lidar_path_p1']
+            lidar_path_row_2 = self.df.iloc[index]['lidar_path_p2']
 
+            # load lidar from numpy file:
+            point_cloud_row1 = np.load(lidar_path_row_1)
+            point_cloud_row2 = np.load(lidar_path_row_2)
+
+            # merge point clouds:
+            plot_point_cloud = np.concatenate([point_cloud_row1, point_cloud_row2] )
+            print(plot_point_cloud.shape)
+
+            # Normalization of LiDAR data: Normalize each batch. I believe taking the mean of the entire batch introduces
+            # spatial bias.
+            x_mean = np.mean(plot_point_cloud[:,0])
+            y_mean = np.mean(plot_point_cloud[:,1])
+            z_mean = np.mean(plot_point_cloud[:,2])
+
+            # rescale using min-max normalization:
+            plot_point_cloud[:,0] = (plot_point_cloud[:,0] - np.min(plot_point_cloud[:,0])) / (np.max(plot_point_cloud[:,0]) - np.min(plot_point_cloud[:,0]))
+            plot_point_cloud[:,1] = (plot_point_cloud[:,1] - np.min(plot_point_cloud[:,1])) / (np.max(plot_point_cloud[:,1]) - np.min(plot_point_cloud[:,1]))
+            plot_point_cloud[:,2] = (plot_point_cloud[:,2] - np.min(plot_point_cloud[:,2])) / (np.max(plot_point_cloud[:,2]) - np.min(plot_point_cloud[:,2]))
+
+            return stacked_rows, ground_truth_LAI, freq_data, plot_point_cloud # stacked rows is the hyperspectral data
+
+            
 
 if __name__ == '__main__':
     #train_test_split_for_dataloading(field='hips_2021')
-    training_data = FeaturesDataset(field = 'hips_2021', train=True, test=False, debug=True, load_individual=True, load_series=False)
+    training_data = FeaturesDataset(field = 'hips_both_years', train=True, test=False, debug=True, load_individual=True, load_series=False)
     training_dataloader = torch.utils.data.DataLoader(training_data, batch_size=1, num_workers = 0, drop_last=False,
                                                         shuffle = True)
     print('len is', training_data.__len__())
     for n, i in enumerate(training_dataloader):
-        print(i[0].shape, i[1].shape, i[2].shape)
+        print(i[0].shape, i[1].shape, i[2].shape, i[3].shape)
         print(n)
-        break
