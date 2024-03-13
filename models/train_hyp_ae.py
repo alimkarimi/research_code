@@ -63,7 +63,7 @@ if cpu_override:
     device = torch.device("cpu")
     ae_model = ae_model.to("cpu")
 
-training_data = FeaturesDataset(field = 'hips_2021', train=True, test=False, load_individual=True, load_series = False, debug=False)
+training_data = FeaturesDataset(field = 'hips_both_years', train=True, test=False, load_individual=True, load_series = False, debug=False)
 training_dataloader = torch.utils.data.DataLoader(training_data, batch_size=1, num_workers = 0, drop_last=False)
 
 criterion = nn.MSELoss()
@@ -134,3 +134,5 @@ plt.title('Loss over Training')
 plt.xlabel('Training batch * 50')
 plt.ylabel('Loss')
 plt.savefig('Hyperspectral_AE_loss.jpg')
+
+# save model:
