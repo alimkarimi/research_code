@@ -25,11 +25,15 @@ widths = []
 px_min = []
 px_max = []
 channel_mean_values = np.empty(136)
+
+##### - USE THESE T/F Flags to set which statistics et computed
 img_dims = False
-channel_means = True
+channel_means = False
+lidar_data = True
+##### - USE THESE T/F Flags to set which statistics et computed
 mean_count = 0
 
-def compute_statistics(img_dims : bool, channel_means : bool, mean_count, channel_mean_values):
+def compute_hyperspectral_statistics(img_dims : bool, channel_means : bool, mean_count, channel_mean_values):
     for folder in folders:
         files_in_folder = os.listdir(base_path + folder)
         #print(files_in_folder)
@@ -66,11 +70,58 @@ def compute_statistics(img_dims : bool, channel_means : bool, mean_count, channe
                             # online update:
                             # mu_k+1 = mu_k + (1/k+1) * (mu_k+)
 
+def compute_lidar_statistics():
+    num_samples = 0
+    x_mean = y_mean = z_mean = 0
+    
+    # open lidar folders:
+    lidar_path_local_all = '/Users/alim/Documents/prototyping/research_lab/HIPS_LiDAR/'
+    local_dirs = os.listdir(lidar_path_local_all)
+    local_dirs.remove('.DS_Store')
+    local_dirs.sort()
+    print(local_dirs)
+    for n, folder in enumerate(local_dirs):
+        file_list = os.listdir(lidar_path_local_all + folder)
+
+        # remove .las files:
+        for m, file in enumerate(file_list):
+            if '.npy' not in file:
+                continue # move to next file
+            else:
+                temp_point_cloud = np.load(lidar_path_local_all + folder + '/' + file)
+                print(temp_point_cloud.shape)
+                if (n == 0) and (m == 0):
+                    x_mean = np.mean(temp_point_cloud[:,0])
+                    y_mean = np.mean(temp_point_cloud[:,1])
+                    z_mean = np.mean(temp_point_cloud[:,2])
+                    num_samples = temp_point_cloud.shape[0]
+
+                else:
+                    # compute online mean update: (current_mean * number of samples so far + sum of new batch) / (number of samples so far + new batch size)
+                    x_mean = (x_mean * num_samples + np.sum(temp_point_cloud[:,0])) / (num_samples + temp_point_cloud.shape[0])
+                    y_mean = (y_mean * num_samples + np.sum(temp_point_cloud[:,1])) / (num_samples + temp_point_cloud.shape[0])
+                    z_mean = (z_mean * num_samples + np.sum(temp_point_cloud[:,2])) / (num_samples + temp_point_cloud.shape[0])
+                    num_samples = num_samples + temp_point_cloud.shape[0]
+
+    return x_mean, y_mean, z_mean, num_samples
+
+
+
+
+
+
+
+        
+
+
+if lidar_data:
+    x_mean, y_mean, z_mean, num_samples = compute_lidar_statistics()
+    print("x_mean:", x_mean, "y_mean:", y_mean, "z_mean", z_mean, "num_samples", num_samples)
 
 if channel_means:
     channel_mean_values = np.empty(136)
     mean_count = 0
-    channel_mean_values, mean_count = compute_statistics(img_dims = False, channel_means= True, mean_count=mean_count,
+    channel_mean_values, mean_count = compute_hyperspectral_statistics(img_dims = False, channel_means= True, mean_count=mean_count,
      channel_mean_values = channel_mean_values)
     print(mean_count)
     print(channel_mean_values)
@@ -81,7 +132,7 @@ if channel_means:
 
 
 if img_dims:
-    compute_statistics(img_dims = True, channel_means=False)
+    compute_hyperspectral_statistics(img_dims = True, channel_means=False)
 
     ### MIN/MAX VALUE ACROSS ALL HIPS:
     print(max(px_max), 'is the max px value!')
