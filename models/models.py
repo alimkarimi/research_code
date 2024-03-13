@@ -364,14 +364,19 @@ class LiDARAE(nn.Module):
 
         latent_dim = 32
 
+        # encoder ops
         self.fc1 = nn.Linear(3, 128)
-        self.relu = nn.ReLU()
         self.fc2 = nn.Linear(128, 64)
         self.fc3 = nn.Linear(64, latent_dim)
 
+        # decoder ops:
         self.fc4 = nn.Linear(latent_dim, 64)
         self.fc5 = nn.Linear(64, 128)
         self.fc6 = nn.Linear(128,3)
+
+        # activations
+        self.relu = nn.ReLU()
+
 
     def encoder(self, x):
         x = self.fc1(x)
@@ -379,6 +384,7 @@ class LiDARAE(nn.Module):
         x = self.fc2(x)
         x = self.relu(x)
         x = self.fc3(x)
+
         return x
 
     def decoder(self, x):
@@ -393,7 +399,7 @@ class LiDARAE(nn.Module):
     def forward(self, x):
         x = self.encoder(x)
         x = self.decoder(x)
-        return x       
+        return x
 
 
 class statistical_model():

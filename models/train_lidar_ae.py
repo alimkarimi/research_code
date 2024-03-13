@@ -24,7 +24,8 @@ optimizer = optim.Adam(lidar_ae.parameters(), lr = 1e-3, betas = (0.9, 0.99))
 
 
 cpu_override = False
-epochs = 5
+epochs = 1
+field = 'hips_both_years'
 
 # get number of model params:
 total_params = sum(p.numel() for p in lidar_ae.parameters())
@@ -44,46 +45,51 @@ if cpu_override:
     device = torch.device("cpu")
     lidar_ae = lidar_ae.to("cpu")
 
-training_data = FeaturesDataset(field = 'hips_2021', train=True, test=False, load_individual=True, load_series = False, debug=False)
+training_data = FeaturesDataset(field = field, train=True, test=False, load_individual=True, load_series = False, debug=False)
 training_dataloader = torch.utils.data.DataLoader(training_data, batch_size=1, num_workers = 0, drop_last=False)
 
 criterion = nn.MSELoss()
 running_loss = []
 total_loss = 0
 
-for n, data in enumerate(training_dataloader):
-    # reset gradients
-    optimizer.zero_grad()
-    
-    # unpack data:
-    hyp_data, GT, freq, point_cloud = data
+for epoch in range(epochs):
+    for n, data in enumerate(training_dataloader):
+        # reset gradients
+        optimizer.zero_grad()
+        
+        # unpack data:
+        hyp_data, GT, freq, point_cloud = data
 
-    # make point_cloud have float32 precision for nn.Linear operation and to run on Mac GPU
-    point_cloud = point_cloud.to(torch.float32)
-    point_cloud = point_cloud.to(device)
+        # make point_cloud have float32 precision for nn.Linear operation and to run on Mac GPU
+        point_cloud = point_cloud.to(torch.float32)
+        point_cloud = point_cloud.to(device)
 
-    output = lidar_ae(point_cloud)
+        output = lidar_ae(point_cloud)
 
-    # compute loss: MSE on original point cloud and predicted point cloud in the decoder.
+        # compute loss: MSE on original point cloud and predicted point cloud in the decoder.
 
-    loss = criterion(output, point_cloud) # criterion(input, target)  
+        loss = criterion(output, point_cloud) # criterion(input, target)  
 
-    # compute gradients wrt loss for each parameter
-    loss.backward()
+        # compute gradients wrt loss for each parameter
+        loss.backward()
 
-    # backpropogate loss:
-    optimizer.step()
+        # backpropogate loss:
+        optimizer.step()
 
-    total_loss += loss.item()
+        total_loss += loss.item()
 
-    if (n + 1) % 25 == 0:
-        avg_loss = total_loss / 25
-        print('avg loss in epoch currently is', avg_loss)
-        running_loss.append(avg_loss)
-        total_loss = 0
+        if (n + 1) % 50 == 0:
+            avg_loss = total_loss / 50
+            print('avg loss in epoch', epoch, ' currently is', avg_loss)
+            running_loss.append(avg_loss)
+            total_loss = 0
 
 plt.plot(running_loss)
 plt.title("Loss in LiDAR Autoencoder Training")
 plt.xlabel("Batch * 25")
 plt.ylabel("Loss")
 plt.savefig("LiDAR_AE_loss.jpg")
+
+# save the model:
+torch.save(lidar_ae.state_dict(), 'trained_lidar_autoencoder_model_' + field + '.pth')
+print('model saved')
