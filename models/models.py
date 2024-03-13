@@ -358,6 +358,43 @@ class HyperspectralAE(nn.Module):
         x = self.decoder(x, ind_mp1, ind_mp2)
         return x 
 
+class LiDARAE(nn.Module):
+    def __init__(self):
+        super(LiDARAE, self).__init__()
+
+        latent_dim = 32
+
+        self.fc1 = nn.Linear(3, 128)
+        self.relu = nn.ReLU()
+        self.fc2 = nn.Linear(128, 64)
+        self.fc3 = nn.Linear(64, latent_dim)
+
+        self.fc4 = nn.Linear(latent_dim, 64)
+        self.fc5 = nn.Linear(64, 128)
+        self.fc6 = nn.Linear(128,3)
+
+    def encoder(self, x):
+        x = self.fc1(x)
+        x = self.relu(x)
+        x = self.fc2(x)
+        x = self.relu(x)
+        x = self.fc3(x)
+        return x
+
+    def decoder(self, x):
+        x = self.fc4(x)
+        x = self.relu(x)
+        x = self.fc5(x)
+        x = self.relu(x) 
+        x = self.fc6(x)
+
+        return x
+
+    def forward(self, x):
+        x = self.encoder(x)
+        x = self.decoder(x)
+        return x       
+
 
 class statistical_model():
     def __init__(self, debug=False, produce_plot=False, produce_metrics=True, cross_validation=False,
