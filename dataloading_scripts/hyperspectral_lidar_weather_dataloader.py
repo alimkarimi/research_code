@@ -96,7 +96,7 @@ class FeaturesDataset(torch.utils.data.Dataset):
     def __len__(self):
         if self.load_individual:
             return self.df.shape[0] # number of training rows
-        else:
+        if self.load_series:
             return self.num_plots
 
     def __getitem__(self, index, debug=False):
@@ -104,33 +104,65 @@ class FeaturesDataset(torch.utils.data.Dataset):
         # load up an image from the index, turn it into the format torch expects.
         # compute mean of each channel in training data, use that to subtract from the mean of the data loaded. 
         if self.load_series:
-            print(self.df['Plot'], 'this is self.df[Plot]')
-            print('\n\n\n')
-            print('index is', index)
-            print(self.plots[index], 'this is self.plots[index]')
-            data_row_1 = self.df[self.df['Plot'] == self.plots[index]]['hyp_path_p1']
-            print('this is data:', data_row_1.values)
-            print(type(data_row_1))
-            print(data_row_1.index)
+            # series loader workflow:
+            # index into plot ids
+            # get all the hyperspectral paths, lidar paths, weather readings, and LAI readings for the plot over the year
+            # combine hyperspectral (with normalization)
+            # combine lidar (with normalization)
+            # return LAI
+            # return weather
+            # return hyp combined
+            # return lidar combined
+            #print('index is', index)
+            #print(self.plots[index], 'this is self.plots[index]')
+            data_row_1 = self.df[self.df['Plot'] == self.plots[index]][['hyp_path_p1', 'lidar_path_p1']] 
+            # access hyperspectral data path row 1 and lidar data path row 1
+            # print('this is data:', data_row_1.values.shape)
+            # print(type(data_row_1))
+            # print(data_row_1.index)
+            # print(type(data_row_1.values))
 
-            data_row_2 = self.df[self.df['Plot'] == self.plots[index]]['hyp_path_p2']
-            print('GOT INDEX')
+            data_row_2 = self.df[self.df['Plot'] == self.plots[index]][['hyp_path_p2', 'lidar_path_p2']] 
+
+            data_weather = self.df[self.df['Plot'] == self.plots[index]][['GDD', 'PREC']]
+            # access hyperspectral data path row 2 and lidar data path row 2.
+            #print(self.plots[index])
+            #print('GOT INDEX')
             list_images_row_1 = []
             list_images_row_2 = []
-            for i in data_row_1.index:
-                # open data: 
-                data_np = np.load(data_row_1[i])
-                list_images_row_1.append(data_np)
-                print(data_row_2[i])
-                print(data_np.shape)
+            list_lidar_row_1 = []
+            list_lidar_row_2 = []
 
-            for i in data_row_2.index:
-                data_np = np.load(data_row_2[i])
-                list_images_row_2.append(data_np)
-                print(data_np.shape)
+            for n, i in enumerate(data_row_1.index):
+                # open hyp and lidar data in row 1: 
+                data_hyp_np = np.load(data_row_1.iloc[n, 0])
+                data_lidar_np = np.load(data_row_1.iloc[n, 1])
+                list_images_row_1.append(data_hyp_np)
+                list_lidar_row_1.append(data_lidar_np)
+                #print(data_hyp_np.shape, 'shape hyp!', data_lidar_np.shape, 'lidar shp' )
+                
+
+            for n, i in enumerate(data_row_2.index):
+                # open hyp and lidar data in row 2:
+                data_hyp_np = np.load(data_row_2.iloc[n, 0])
+                data_lidar_np = np.load(data_row_2.iloc[n, 1])
+                list_images_row_2.append(data_hyp_np)
+                list_lidar_row_2.append(data_lidar_np)
+                #print(data_hyp_np.shape, 'shape again', data_lidar_np.shape, 'lidar shape')
+
+            GDDs = torch.empty((len(list_images_row_1)))
+            PRECs = torch.empty((len(list_images_row_1)))
+
+            for t, i in enumerate(data_weather.index):
+                # add GDD and PREC data to tensors. 
+                GDDs[t] = data_weather.iloc[n, 0]
+                PRECs[t] = data_weather.iloc[n, 1]
 
             # create empty tensor to hold result of the dataloader output:
-            timeseries_tensor = torch.empty((len(list_images_row_1), 136, 130, 42))
+
+            timeseries_hyp_tensor = torch.empty((len(list_images_row_1), 136, 130, 42))
+            timeseries_lidar_list = [] # since each point cloud is not a fixed number of points, use a list to hold as
+            # a list can hold variable data types / lengths.
 
 
             ground_truth_LAI = self.df[self.df['Plot'] == self.plots[index]]['LAI'].values
@@ -145,35 +177,53 @@ class FeaturesDataset(torch.utils.data.Dataset):
             # We then add that combined image (the "mega-image" that contains both rows) into
             # the correct index of the timeseries tensor. This is the hyperspectral image we want to return
             # from the dataloader! 
-            for t, img in enumerate(zip(list_images_row_1, list_images_row_2)):
-
+            for t, (hyp_r1, hyp_r2, lid_r1, lid_r2) in enumerate(zip(list_images_row_1, list_images_row_2, list_lidar_row_1, list_lidar_row_2)):
+                # First, work with hyperspectral data:
                 ### Normalize to by dividing by max pixel value found in dataset:
                 max_HIPS_px = 8470.0
                 min_HIPS_px = -555.0
 
-                img_row_1 = img[0] / max_HIPS_px
-                img_row_2 = img[1] / max_HIPS_px
+                img_row_1 = hyp_r1 / max_HIPS_px
+                img_row_2 = hyp_r2 / max_HIPS_px
 
                 # clip so that negative values do not exist and so that we get pixels in the range 0 - 1:
                 img_row_1 = np.clip(img_row_1, 0, 1)
                 img_row_2 = np.clip(img_row_2, 0, 1)
 
-                print(img_row_1.shape)
-                print('max after clipping between 0 and 1:', img_row_1.max())
+                # print(img_row_1.shape)
+                # print('max after clipping between 0 and 1:', img_row_1.max())
 
                 # resize using skimage:
                 resized_img_row_1 = skimage.transform.resize(img_row_1, output_shape = (136, 130, 21))
                 resized_img_row_2 = skimage.transform.resize(img_row_2, output_shape = (136, 130, 21))
-                print(resized_img_row_1.shape, resized_img_row_2.shape)
+                #print(resized_img_row_1.shape, resized_img_row_2.shape)
                 
                 # stack row plots together:
                 stacked_rows = np.concatenate((resized_img_row_1, resized_img_row_2), axis=2)
-                print(stacked_rows.shape)
-                print('HERE!')
-                print(stacked_rows.max())
-                timeseries_tensor[t] = torch.tensor(stacked_rows)
+                # print(stacked_rows.shape)
+                # print('HERE!')
+                # print(stacked_rows.max())
+                timeseries_hyp_tensor[t] = torch.tensor(stacked_rows)
+
+                # now, process lidar data:
+                # merge point clouds from each time based observation (i.e, row1 and row2 from t1)
+                plot_point_cloud = np.concatenate([lid_r1, lid_r2])
+                #print(plot_point_cloud.shape, 'shape of point cloud concatenated')
+
+                # Normalization of LiDAR data: Normalize each batch. I believe taking the mean of the entire batch introduces
+                # spatial bias.
+                x_mean = np.mean(plot_point_cloud[:,0])
+                y_mean = np.mean(plot_point_cloud[:,1])
+                z_mean = np.mean(plot_point_cloud[:,2])
+
+                # rescale using min-max normalization:
+                plot_point_cloud[:,0] = (plot_point_cloud[:,0] - np.min(plot_point_cloud[:,0])) / (np.max(plot_point_cloud[:,0]) - np.min(plot_point_cloud[:,0]))
+                plot_point_cloud[:,1] = (plot_point_cloud[:,1] - np.min(plot_point_cloud[:,1])) / (np.max(plot_point_cloud[:,1]) - np.min(plot_point_cloud[:,1]))
+                plot_point_cloud[:,2] = (plot_point_cloud[:,2] - np.min(plot_point_cloud[:,2])) / (np.max(plot_point_cloud[:,2]) - np.min(plot_point_cloud[:,2]))
+
+                timeseries_lidar_list.append(plot_point_cloud)
             
-            return timeseries_tensor, ground_truth_LAI
+            return timeseries_hyp_tensor, ground_truth_LAI, timeseries_lidar_list, GDDs, PRECs
 
         if self.load_individual: # load individual images instead of in a series.
             # the intuition here is to just learn good features of the image, regardless of the 
@@ -249,10 +299,13 @@ class FeaturesDataset(torch.utils.data.Dataset):
 
 if __name__ == '__main__':
     #train_test_split_for_dataloading(field='hips_2021')
-    training_data = FeaturesDataset(field = 'hips_both_years', train=True, test=False, debug=True, load_individual=True, load_series=False)
+    training_data = FeaturesDataset(field = 'hips_both_years', train=True, test=False, debug=True, load_individual=False, 
+    load_series=True)
     training_dataloader = torch.utils.data.DataLoader(training_data, batch_size=1, num_workers = 0, drop_last=False,
                                                         shuffle = True)
     print('len is', training_data.__len__())
     for n, i in enumerate(training_dataloader):
-        print(i[0].shape, i[1].shape, i[2].shape, i[3].shape, i[4].shape, i[5].shape)
+        print(i[0].shape, i[1].shape, i[3].shape, i[4].shape)
+        for x in i[2]:
+            print(x.shape)
         print(n)
