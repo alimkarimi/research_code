@@ -34,11 +34,11 @@ print("Total number of parameters: {}".format(total_params))
 if torch.backends.mps.is_available():
     device = torch.device("mps")
     lidar_ae = lidar_ae.to(device)
-    print('USING DEVICE:', device)
+    print('USING DEVICE:', device, '(GPU)')
 else:
     device = torch.device("cpu")
     lidar_ae = lidar_ae.to(device)
-    print('USING DEVICE:', device)
+    print('USING DEVICE:', device, '(CPU)')
 
 if cpu_override:
     print('CUSTOM OVERRIDE TO CPU EVEN THOUGH GPU IS AVAILABLE')
@@ -58,7 +58,7 @@ for epoch in range(epochs):
         optimizer.zero_grad()
         
         # unpack data:
-        hyp_data, GT, freq, point_cloud = data
+        hyp_data, GT, freq, point_cloud, GDD, PREC = data
 
         # make point_cloud have float32 precision for nn.Linear operation and to run on Mac GPU
         point_cloud = point_cloud.to(torch.float32)

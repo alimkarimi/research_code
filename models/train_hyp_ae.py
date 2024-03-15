@@ -44,6 +44,7 @@ optimizer = optim.Adam(ae_model.parameters(), lr = 1e-3, betas = (0.9, 0.99))
 
 cpu_override = False
 epochs = 5
+field = 'hips_both_years'
 
 # get number of model params:
 total_params = sum(p.numel() for p in ae_model.parameters())
@@ -63,7 +64,7 @@ if cpu_override:
     device = torch.device("cpu")
     ae_model = ae_model.to("cpu")
 
-training_data = FeaturesDataset(field = 'hips_both_years', train=True, test=False, load_individual=True, load_series = False, debug=False)
+training_data = FeaturesDataset(field = field, train=True, test=False, load_individual=True, load_series = False, debug=False)
 training_dataloader = torch.utils.data.DataLoader(training_data, batch_size=1, num_workers = 0, drop_last=False)
 
 criterion = nn.MSELoss()
@@ -93,11 +94,11 @@ def plot_input_and_reconstruction(in_img, reconstructed_img, freq, epoch, batch)
 
 for epoch in range(epochs):
     for n, batch_data in enumerate(training_dataloader):
-
         optimizer.zero_grad() # reset gradients.
 
         # unpack from dataloader:
-        img, GT, freq = batch_data
+        img, GT, freq, _, GDD, PREC = batch_data # _ is the point cloud. Since we are training a representation of hyperspectral data, 
+        # we ignore the point cloud
         img = img.to(torch.float32)
         #print(img.dtype)
         #print(img.shape)
@@ -136,3 +137,5 @@ plt.ylabel('Loss')
 plt.savefig('Hyperspectral_AE_loss.jpg')
 
 # save model:
+torch.save(ae_model.state_dict(), 'trained_hyperspectral_autoencoder_model_' + field + '.pth')
+print('model saved')

@@ -363,9 +363,10 @@ class HyperspectralAE(nn.Module):
         return x 
 
 class LiDARAE(nn.Module):
-    def __init__(self, encoder_only = False):
+    def __init__(self, encoder_only = False, debug=False):
         super(LiDARAE, self).__init__()
         self.encoder_only = encoder_only
+        self.debug = debug
         latent_dim = 32
 
         # encoder ops
@@ -388,23 +389,45 @@ class LiDARAE(nn.Module):
         x = self.fc2(x)
         x = self.relu(x)
         x = self.fc3(x)
+        kernel_size = x.shape[1]
+        maxpool1d = nn.MaxPool1d(kernel_size=x.shape[1], return_indices=True)
+        if self.debug:
+            print('kernel size is', x.shape[1])
+        x = torch.permute(x, (0, 2, 1)) # permute because maxpool runs on the last dimension. We want the maxpool to 
+        # aggregate featuers along the number of LiDAR points.
+        if self.debug:
+            print(x.shape, 'shape after permute')
+        x, ind = maxpool1d(x)
+        if self.debug:
+            print('after max pool shape of output is' ,x.shape)
 
-        return x
+        return x, ind, kernel_size
 
-    def decoder(self, x):
+    def decoder(self, x, ind, kernel_size):
+        if self.debug:
+            print('shape of kernel',kernel_size)
+            print(x.shape, 'shape before unmaxpool')
+            print('indices shape', ind.shape)
+        maxunpool1d = nn.MaxUnpool1d(kernel_size=kernel_size)
+        x = maxunpool1d(x, ind)
+        if self.debug:
+            print('shape after maxpool', x.shape)
+        x = torch.permute(x, (0,2,1)) # permute again now that maxunpool is completed. We want to perform FC operations 
+        # on a fixed dimension as that is the only way we can train learnable parameters.
         x = self.fc4(x)
         x = self.relu(x)
         x = self.fc5(x)
-        x = self.relu(x) 
+        x = self.relu(x)
         x = self.fc6(x)
 
         return x
 
     def forward(self, x):
-        x = self.encoder(x)
+        x, ind, kernel_size = self.encoder(x)
 
         if self.encoder_only == False:
-            x = self.decoder(x)
+            x = self.decoder(x, ind, kernel_size)
+
         return x
 
 
