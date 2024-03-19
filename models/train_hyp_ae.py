@@ -4,7 +4,7 @@ from torch import optim
 
 import sys
 sys.path.append('..')
-from dataloading_scripts.hyperspectral_dataloader import FeaturesDataset
+from dataloading_scripts.hyperspectral_lidar_weather_dataloader import FeaturesDataset
 from models import HyperspectralAE
 from hyperspectral_lidar_processing.hyperspectral_plot_extraction import get_visual_hyperspectral_rgb
 
@@ -65,7 +65,7 @@ if cpu_override:
     ae_model = ae_model.to("cpu")
 
 training_data = FeaturesDataset(field = field, train=True, test=False, load_individual=True, load_series = False, debug=False)
-training_dataloader = torch.utils.data.DataLoader(training_data, batch_size=1, num_workers = 0, drop_last=False)
+training_dataloader = torch.utils.data.DataLoader(training_data, batch_size=4, num_workers = 0, drop_last=False)
 
 criterion = nn.MSELoss()
 running_loss = []
@@ -97,11 +97,11 @@ for epoch in range(epochs):
         optimizer.zero_grad() # reset gradients.
 
         # unpack from dataloader:
-        img, GT, freq, _, GDD, PREC = batch_data # _ is the point cloud. Since we are training a representation of hyperspectral data, 
+        img, GT, freq, point_cloud, GDD, PREC = batch_data # Since we are training a representation of hyperspectral data, 
         # we ignore the point cloud
         img = img.to(torch.float32)
         #print(img.dtype)
-        #print(img.shape)
+        print(img.shape)
         img = img.to(device)
         img = torch.squeeze(img, 0)
         #print(img.shape)
