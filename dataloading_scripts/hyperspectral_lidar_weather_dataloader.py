@@ -29,6 +29,62 @@ np.random.seed(0)
 
 channel_means = np.load('/Users/alim/Documents/prototyping/research_lab/research_code/analysis/channel_means.npy')[:136]
 
+def collate_function(batch):
+    print(batch[0][0].shape, batch[0][1], batch[0][2].shape, batch[0][3].shape)
+    print(batch[1][0].shape, batch[1][3].shape)
+    print('len of batch', len(batch))
+    # batch is a combination of stacked_rows, ground_truth_LAI, freq_data[:136], plot_point_cloud, GDD, PREC
+    #stacked_rows, ground_truth_LAI, freq_data, plot_point_cloud, GDD, PREC = batch
+    for i in range(len(batch)):
+        print(batch[i][3].shape)
+    print('got here!')
+    print(type(batch[0]))
+    print('this is batch of batch[:][0]', batch[:][0][0].shape)
+    print('this is batch[0][0].shape', batch[0][0].shape)
+    li_hyp = []
+    li_GT = []
+    li_freq = []
+    li_points = []
+    li_GDD = []
+    li_PREC = []
+    for i in range(len(batch)):
+        print('hyp', batch[i][0].shape)
+        print(type(batch[i][1])) # just a np float64)
+        print('GT', batch[i][1]) 
+        print('freq', batch[i][2].shape)
+        print('points', batch[i][3].shape)
+        print('GDD', batch[i][4])
+        print('PREC', batch[i][5])
+        li_points.append(batch[i][3].shape)
+    max_points = 0
+    for i in li_points:
+        #print('shapes are:', i)
+        if i[0] > max_points:
+            max_points = i[0]
+
+    lidar_tensor = torch.zeros(max_points, (len(li_points)) * 3)
+    #print(lidar_tensor.shape)
+
+    # zero pad lidar data if it isn't the biggest point cloud:
+    print('right before lidar assignment')
+    for i in range(int(lidar_tensor.shape[1] / 3)):
+        #print(li_points[i][0])
+        #print(torch.tensor(batch[i][3]).shape, 'shape of lidar tensor')
+        num_points = li_points[i][0]
+        #print(i*3, i * 3 +3)
+        #print((lidar_tensor.shape[1] / 3 )-1)
+        if i == int(lidar_tensor.shape[0] / 3) - 1:
+            lidar_tensor[0:num_points, i * 3: i * 3:] = torch.tensor(batch[i][3])
+        else:
+            lidar_tensor[0:num_points, i * 3: i * 3 + 3] = torch.tensor(batch[i][3])
+
+    print('returning:', batch[:][0])
+        
+
+    return batch[:][0], batch[0][1], batch[0][2], lidar_tensor
+
+
+
 def train_test_split_for_dataloading(debug=False, field = 'hips_2021'):
 
     df = append_hyperspectral_lidar_paths(field=field)
@@ -222,7 +278,8 @@ class FeaturesDataset(torch.utils.data.Dataset):
                 plot_point_cloud[:,2] = (plot_point_cloud[:,2] - np.min(plot_point_cloud[:,2])) / (np.max(plot_point_cloud[:,2]) - np.min(plot_point_cloud[:,2]))
 
                 timeseries_lidar_list.append(plot_point_cloud)
-            
+                print('here!!!!!!!!!!!!!!!!!!!!')
+                print(timeseries_hyp_tensor.shape, ground_truth_LAI.shape, GDDs.shape, PRECs.shape)           
             return timeseries_hyp_tensor, ground_truth_LAI, timeseries_lidar_list, GDDs, PRECs
 
         if self.load_individual: # load individual images instead of in a series.
@@ -293,19 +350,21 @@ class FeaturesDataset(torch.utils.data.Dataset):
             PREC = self.df.iloc[index]['PREC']
 
             # returns the hyperspectral data, LAI, band centers, point cloud, growing degree days, precipitation
-            return stacked_rows, ground_truth_LAI, freq_data[:136], plot_point_cloud, GDD, PREC 
+            return stacked_rows, ground_truth_LAI, freq_data[:136], plot_point_cloud, GDD, PREC
 
             
 
 if __name__ == '__main__':
     #train_test_split_for_dataloading(field='hips_2021')
-    training_data = FeaturesDataset(field = 'hips_both_years', train=True, test=False, debug=True, load_individual=False, 
-    load_series=True)
-    training_dataloader = torch.utils.data.DataLoader(training_data, batch_size=1, num_workers = 0, drop_last=False,
-                                                        shuffle = True)
+    training_data = FeaturesDataset(field = 'hips_both_years', train=True, test=False, debug=True, load_individual=True, 
+    load_series=False)
+    training_dataloader = torch.utils.data.DataLoader(training_data, batch_size=2, num_workers = 0, drop_last=False,
+                                                        shuffle = True, collate_fn = collate_function)
     print('len is', training_data.__len__())
     for n, i in enumerate(training_dataloader):
-        print(i[0].shape, i[1].shape, i[3].shape, i[4].shape)
-        for x in i[2]:
-            print(x.shape)
+        # print(i[0].shape, i[1].shape, i[3].shape, i[4].shape)
+        # for x in i[2]:
+        #
+        #      print(x.shape)
+        #print(i[:][:][0].shape, i[1], i[2].shape)
         print(n)

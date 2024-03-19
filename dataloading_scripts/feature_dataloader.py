@@ -85,6 +85,12 @@ class FeaturesDataset(torch.utils.data.Dataset):
         # to the model.
         self.plots = self.df['Plot'].unique()
         self.field = field
+        if self.field == 'hips_2021':
+            self.field_id = 1
+        if self.field == 'hips_2022':
+            self.field_id = 2
+        if self.field == 'hips_both_years':
+            self.field_id = 3
         
         print(len(train_indices), "length of TRAINING")
         print(len(test_indices), "LENGTH OF TEST")
@@ -108,6 +114,15 @@ class FeaturesDataset(torch.utils.data.Dataset):
        'plot_volume2', 'VCI', 'CAP', 'LPI', 'NDVI705', 'GNDVI', 'EVI', 'VOG2',
        'MCARI2', 'MTVI', 'PBI', 'EVI2', 'GDD', 'PREC', ]].values
         metadata = data[['Plot', 'date', 'hybrid_or_inbred', 'pedigree', 'nitrogen_treatment']]
+        plot_data = np.array(metadata['Plot'])
+        date_data = np.array(metadata['date'])
+        hybrid_or_inbred_data = str(metadata['hybrid_or_inbred'])
+        pedigree_data = str(metadata['pedigree'])
+        #print(type(plot_data), type(date_data), type(hybrid_or_inbred_data), type(pedigree_data))
+        #print(plot_data, date_data, hybrid_or_inbred_data, pedigree_data)
+
+
+       
 
         # convert to torch tensors
         ground_truth_LAI = np.array(ground_truth_LAI, dtype = np.float64) # for compatibility with pytorch model
@@ -122,7 +137,7 @@ class FeaturesDataset(torch.utils.data.Dataset):
 
         # the GT is 1 x 4 x 1, where there are 4 different ground truth LAIs (one for each observation)
         
-        return train_or_test_features, ground_truth_LAI
+        return train_or_test_features, ground_truth_LAI, plot_data, self.field_id#, date_data #hybrid_or_inbred_data, pedigree_data
 
 if __name__ == "__main__":
     training_data = FeaturesDataset(field = 'hips_both_years', train=True, test=False)
@@ -131,12 +146,13 @@ if __name__ == "__main__":
     training_dataloader = torch.utils.data.DataLoader(training_data, batch_size=1, num_workers = 0, drop_last=False)
     testing_datalodaer  = torch.utils.data.DataLoader(testing_data,  batch_size=1, num_workers = 0, drop_last=False)
     print('created dataloader... starting enumerating.')
-    for n, (features, GT) in enumerate(training_dataloader):
+    for n, (features, GT, plot_data, field_id) in enumerate(training_dataloader):
         print(n)
         print(features.shape)
         print(GT.shape)
 
-    for n, (features, GT) in enumerate(testing_datalodaer):
+    for n, (features, GT, plot_data, field_id) in enumerate(testing_datalodaer):
         print(n)
         print(features.shape)
         print(GT.shape)
+        print(plot_data, field_id)
