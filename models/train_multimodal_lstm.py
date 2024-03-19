@@ -4,7 +4,7 @@ from torch import optim
 
 import sys
 sys.path.append('..')
-from dataloading_scripts.hyperspectral_dataloader import FeaturesDataset
+from dataloading_scripts.hyperspectral_lidar_weather_dataloader import FeaturesDataset
 from models import HyperspectralAE, LiDARAE, RNN
 from hyperspectral_lidar_processing.hyperspectral_plot_extraction import get_visual_hyperspectral_rgb
 
@@ -74,31 +74,38 @@ if cpu_override:
 
 # then, we need to concatenate the latent representations of those vectors with the weather observations
 
-training_data = FeaturesDataset(field = 'hips_2021', train=True, test=False, load_individual=True, load_series = False, debug=False)
+training_data = FeaturesDataset(field = 'hips_2021', train=True, test=False, load_individual=False, load_series = True, debug=False)
 training_dataloader = torch.utils.data.DataLoader(training_data, batch_size=1, num_workers = 0, drop_last=False)
 
 for n, batch in enumerate(training_dataloader):
     # first, unpack batch:
-    img, GT, freq, point_cloud, GDD, PREC = batch
+    img, GT, point_cloud, GDD, PREC = batch # point_cloud is a list of tensors b/c of their variable size.
+    
 
     # concat GDD and PREC into weather tensor:
     weather = torch.concat([GDD, PREC]).to(torch.float32)
     weather = weather.to(device)
+    print(weather.shape) # 2 x timepoints
 
     # move hyperspectral and lidar data to float32 precision:
+    img = img.squeeze(0)
     img = img.to(torch.float32)
     img = img.to(device)
-    point_cloud = point_cloud.to(torch.float32)
-    point_cloud = point_cloud.to(device)
+    print(img.shape)
+    # point_cloud = point_cloud.to(torch.float32)
+    # point_cloud = point_cloud.to(device)
 
     # run img through hyperspectral AE, run point_cloud through lidar AE:
 
     hyp_embedding = hyp_ae_model(img) # hyp_embdding is 500 dims
+    print('ran this')
     lidar_embedding = lidar_ae_model(point_cloud) # lidar_embedding is 1 x 32 x 1
     lidar_embedding = torch.squeeze(lidar_embedding, 0).squeeze(1) # squeeze from 1 x 32 x 1 to 32
 
     # concatenate full feature vector
     full_feature_vector = torch.concat([hyp_embedding, lidar_embedding, weather]) # 500 + 32 + 2 = 534 dimensions
+
+    rnn_out = rnn(full_feature_vector)
     
 
 
