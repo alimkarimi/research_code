@@ -18,5 +18,9 @@ test_folder/*
 .smbdelete*
 /.smbdelete*
 
-# jpg files # 
+# jpg, gif files # 
 *.jpg*
+*.gif*
+
+# .pth files #
+*.pth*
