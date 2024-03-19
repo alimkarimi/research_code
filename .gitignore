@@ -17,3 +17,6 @@ test_folder/*
 # .smbdelete # 
 .smbdelete*
 /.smbdelete*
+
+# jpg files # 
+*.jpg*
