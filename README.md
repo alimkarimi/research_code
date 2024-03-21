@@ -24,4 +24,5 @@ How to use Transformer to predict LAI at every timestep:
 ... to do ...
 
 ### 
-Add info about LSTM
+LSTM architecture:
+![LSTM for traditional Remote Sensing features architecture diagram][models/architecture_diagrams/LSTM_arch_hyperspectral_lidar_weather_fusion.png]
