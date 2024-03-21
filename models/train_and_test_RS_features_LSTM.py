@@ -46,11 +46,15 @@ if cpu_override:
     device = torch.device("cpu")
     rnn = rnn.to("cpu")
 
-
+field_dict = {
+    1 : 'HIPS 2021',
+    2 : 'HIPS 2022',
+    3 : 'HIPS 2021 + 2022'
+}
 
 # instantiate dataset
-training_data = FeaturesDataset(field = 'hips_both_years', train=True, test=False)
-testing_data     = FeaturesDataset(field = 'hips_both_years', train=False, test=True)
+training_data = FeaturesDataset(field = 'hips_2022', train=True, test=False)
+testing_data     = FeaturesDataset(field = 'hips_2022', train=False, test=True)
 
 # instantiate dataloaders for train/test
 training_dataloader = torch.utils.data.DataLoader(training_data, batch_size=1, num_workers = 0, drop_last=False, shuffle=True)
@@ -59,6 +63,7 @@ testing_datalodaer  = torch.utils.data.DataLoader(testing_data,  batch_size=1, n
 running_loss = []
 r_2_list = [] # used in function test_after_epoch
 rmse_list = [] # used in function test_after_epoch
+relative_rmse_list = [] # used in function test_after_epoch
 total_loss = 0
 
 def get_field_metadata(field_id):
@@ -84,7 +89,7 @@ def get_subplot_metadata(df, plot_id):
     return *pedigree, *hybrid_or_inbred, dates
 
 
-def test_after_epoch(epoch, field_id):
+def test_after_epoch(epoch, field_id, plot_t_preds=True, plot_1to1=True):
     df = get_field_metadata(field_id) # load the right dataframe so we can get the pedigree/genotype data when plotting.
     
     """
@@ -93,11 +98,13 @@ def test_after_epoch(epoch, field_id):
     y_pred = [] # we reset this to empty for every epoch
     y_true = [] # we reset this to empty for every epoch
 
-    num_testing_samples = len(testing_datalodaer)
-    print('length of test', num_testing_samples)
-    rows = cols = int(np.ceil(np.sqrt(num_testing_samples)))
-    fig, ax = plt.subplots(rows, cols, figsize=(20,20))
-    fig.suptitle('Prediction vs GT for Testing Split: Epoch ' + str(epoch))
+    if plot_t_preds:
+        num_testing_samples = len(testing_datalodaer)
+        print('length of test', num_testing_samples)
+        rows = 2
+        cols = 5
+        fig, ax = plt.subplots(rows, cols, figsize=(30,12))
+        fig.suptitle('Prediction vs GT for Testing Split: Epoch ' + str(epoch))
 
     for n, testing_sample in enumerate(testing_datalodaer):
         features, GT, plot_id, field_id = testing_sample
@@ -125,35 +132,63 @@ def test_after_epoch(epoch, field_id):
             y_true.append(float(GT[x].cpu().detach().numpy())) # append y_true to list.
             y_pred.append(float(all_pred[x].cpu().detach().numpy())) # append y_pred to list
 
-        # get the right pedigree and hybrid/inbred data for the plot:
-        metadata = get_subplot_metadata(df, plot_id)
-        pedigree, hybrid_inbred, dates = metadata
-        # the lists above will be needed to compute r_2_avgs and rmse_avgs after the entire testing sample is iterated through.
-        # plot GT vs Predicted:
-        row_idx= n // rows  # Calculate the row index
-        col_idx = n % cols   # Calculate the column index
-        #print(row_idx, col_idx)
-        ax[row_idx, col_idx].plot(dates, GT.cpu().detach().numpy(), label='Ground Truth')
-        ax[row_idx, col_idx].plot(dates, all_pred.cpu().detach().numpy(), label = 'Prediction')
-        ax[row_idx, col_idx].legend()
-        ax[row_idx, col_idx].set_title('Predictions for ' + pedigree + ': ' + dates[0][0:4])
-        ax[row_idx, col_idx].set_xlabel('Date')
-        ax[row_idx, col_idx].set_ylabel('LAI')
+        if plot_t_preds:
+            # get the right pedigree and hybrid/inbred data for the plot:
+            metadata = get_subplot_metadata(df, plot_id)
+            pedigree, hybrid_inbred, dates = metadata
+            # the lists above will be needed to compute r_2_avgs and rmse_avgs after the entire testing sample is iterated through.
+            # plot GT vs Predicted:
+            row_idx= n // cols  # Calculate the row index
+            col_idx = n % cols   # Calculate the column index
+            #print(row_idx, col_idx)
+            ax[row_idx, col_idx].plot(dates, GT.cpu().detach().numpy(), label='Ground Truth')
+            ax[row_idx, col_idx].plot(dates, all_pred.cpu().detach().numpy(), label = 'Prediction')
+            ax[row_idx, col_idx].legend()
+            ax[row_idx, col_idx].set_title('Predictions for ' + pedigree + ': ' + dates[0][0:4])
+            ax[row_idx, col_idx].set_xlabel('Date')
+            ax[row_idx, col_idx].set_ylabel('LAI')
 
-        #print('lenght is', GT.cpu().detach().numpy().shape)
-        #
-        # print('y_true is', y_true)
-        # print('y_pred is', y_pred)
+            #print('lenght is', GT.cpu().detach().numpy().shape)
+            #
+            # print('y_true is', y_true)
+            # print('y_pred is', y_pred)
 
-        #loss = criterion(all_pred, GT)
-    fig.savefig('/Users/alim/Documents/prototyping/research_lab/research_code/models/GT_vs_pred_over_time/GT_vs_pred_sample_e' + str(epoch) + '_f' + str(int(field_id)) + '.jpg')
-        
+            #loss = criterion(all_pred, GT)
+
     r_2 = r2_score(y_true, y_pred) # compute r_2 
     rmse = mean_squared_error(y_true, y_pred, squared=False) 
-    r_2_list.append(r_2)
-    rmse_list.append(rmse)
-    print('r_2, rmse testing after epoch' , epoch, ': ', r_2, rmse)
+    max_y_true = np.max(np.array(y_true))
+    min_y_true = np.min(np.array(y_true)) 
+    relative_rmse = rmse / (max_y_true - min_y_true) # relative RMSE def from Purnima's revised RMSE paper (on my iPad)
 
+    r_2_list.append(r_2) # save r_2 for each epoch. List isn't currently used anywhere
+    rmse_list.append(rmse) # save RMSE for each epoch. List isn't currently used anywhere
+    relative_rmse_list.append(relative_rmse) # save relative RMSE for each epoch. List isn't currently used anywhere
+    print('r_2, rmse, relative_rmse testing after epoch' , epoch, ': ', r_2, rmse, relative_rmse)
+
+    if plot_t_preds:
+        fig.savefig('/Users/alim/Documents/prototyping/research_lab/research_code/models/GT_vs_pred_over_time/GT_vs_pred_sample_e' + str(epoch) + '_f' + str(int(field_id)) + '.jpg')
+        fig.clf() # clear figure for future plots
+    if plot_1to1:
+        # plot the 1:1 line of predictions, GT values:
+        plt.figure(figsize=(8,8))
+        plt.scatter(y_true, y_pred, label='Pred vs GT')
+        plt.plot([0,7], [0,7], label='One to one', color = 'black')
+        plt.title('Ground Truth vs Predicted LAI on ' + str(field_dict[int(field_id)]) + ' After Epoch ' + str(epoch))
+        plt.xlabel('Ground Truth LAI')
+        plt.ylabel('Predicted LAI')
+        plt.xlim(0,7)
+        plt.ylim(0,7)
+        plt.annotate(f'R^2 = {r_2:.2f}', xy=(0.05, 0.9), xycoords='axes fraction', fontsize=10)
+        plt.annotate(f'RMSE = {rmse:.2f}', xy=(0.05, 0.8), xycoords='axes fraction', fontsize=10)
+        plt.annotate(f'rRMSE = {relative_rmse:.2f}', xy=(0.05, 0.7), xycoords='axes fraction', fontsize=10)
+        plt.gca().set_aspect('equal', adjustable='box')
+        plt.legend(loc='lower right')
+        # save after creating plot:
+        plt.savefig('/Users/alim/Documents/prototyping/research_lab/research_code/models/one_to_one_plots/one_to_one_e' + str(epoch) + '_f' + str(int(field_id)) + '.jpg')
+        plt.clf() # clear plot/figure
+
+        
 
 
 # training loop below. Note, not possible to do batched gradient descent. Should implement this, so that we can find a better optimized 
@@ -216,6 +251,7 @@ plt.xlabel('Epoch')
 plt.ylabel('RMSE or R_2')
 plt.legend()
 plt.savefig('r_2_and_rmse_over_training_' + testing_data.field + '.jpg')
+
 
 # save the model:
 torch.save(rnn.state_dict(), 'trained_rnn_model.pth')
