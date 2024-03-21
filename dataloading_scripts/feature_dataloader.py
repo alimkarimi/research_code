@@ -140,12 +140,14 @@ class FeaturesDataset(torch.utils.data.Dataset):
         return train_or_test_features, ground_truth_LAI, plot_data, self.field_id#, date_data #hybrid_or_inbred_data, pedigree_data
 
 if __name__ == "__main__":
-    training_data = FeaturesDataset(field = 'hips_both_years', train=True, test=False)
-    testing_data  = FeaturesDataset(field = 'hips_both_years', train=False, test=True)
+    training_data = FeaturesDataset(field = 'hips_2022', train=True, test=False)
+    testing_data  = FeaturesDataset(field = 'hips_2022', train=False, test=True)
 
     training_dataloader = torch.utils.data.DataLoader(training_data, batch_size=1, num_workers = 0, drop_last=False)
     testing_datalodaer  = torch.utils.data.DataLoader(testing_data,  batch_size=1, num_workers = 0, drop_last=False)
     print('created dataloader... starting enumerating.')
+    print(len(training_dataloader))
+    print(len(testing_datalodaer))
     for n, (features, GT, plot_data, field_id) in enumerate(training_dataloader):
         print(n)
         print(features.shape)
