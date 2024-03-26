@@ -218,18 +218,19 @@ class RNN(nn.Module):
     This RNN class wraps an instantiated LSTM class.
     """
     def __init__(self, batch_size : int, concat_based_LSTM : bool, addition_based_LSTM : bool, debug=False,
-                 hidden_size = 100, cell_size = 100):
+                 hidden_size = 100, cell_size = 100, input_size=17):
         super(RNN, self).__init__()
         self.debug=debug
         self.batch_size = batch_size
         self.hidden_size = hidden_size
         self.cell_size = cell_size
+        self.input_size = input_size
 
         if addition_based_LSTM:
-            self.lstm = LSTM_addition_based(input_size= 17, hidden_size= hidden_size, cell_size=cell_size)
+            self.lstm = LSTM_addition_based(input_size= input_size, hidden_size= hidden_size, cell_size=cell_size)
             print('instantiating addition based LSTM')
         if concat_based_LSTM:
-            self.lstm = LSTM_concat_based(input_size=17, hidden_size = hidden_size, cell_size=cell_size)
+            self.lstm = LSTM_concat_based(input_size=input_size, hidden_size = hidden_size, cell_size=cell_size)
             print('instantiating concat based LSTM')
 
         self.fc = nn.Linear(self.lstm.hidden_size, 1) # fc layer to do prediction of LAI at every step.
