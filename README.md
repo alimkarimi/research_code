@@ -23,8 +23,8 @@ Autoencoder models to build neural representations of LiDAR and hyperspectral da
 The plan is to build a transformer network for predicting LAI at every timestep. I will add code to train and test this model.
 
 ### 
-LSTM architecture:
-![LSTM for traditional Remote Sensing features architecture diagram](models/architecture_diagrams/Network Architecture_update.png)
+LSTM architecture::
+![LSTM for traditional Remote Sensing features architecture diagram](models/architecture_diagrams/NetworkArchitecture_update.png)
 
 Hyperspectral autencoder architecture:
 ![Hyperspectral autoencoder](models/architecture_diagrams/Hyperspectral_autoencoder_arch.png)
