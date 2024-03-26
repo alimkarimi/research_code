@@ -10,7 +10,7 @@ import torch
 from sklearn.model_selection import StratifiedGroupKFold
 from sklearn.preprocessing import StandardScaler
 
-def train_test_split_for_dataloading(debug=False, field = 'hips_2021'):
+def train_test_split_for_dataloading(debug=False, field = 'hips_2021', return_split = 0):
 
     df = get_svr_features(debug=False, data_path=field)
 
@@ -24,7 +24,7 @@ def train_test_split_for_dataloading(debug=False, field = 'hips_2021'):
     # make a train and test split
     train_indices = None
     test_indices = None
-    sss = StratifiedGroupKFold(n_splits=10, shuffle=True, random_state=1)
+    sss = StratifiedGroupKFold(n_splits=10, shuffle=False, random_state=None)
     for i, (train_indices, test_indices) in enumerate(sss.split(df.iloc[:, 1:-5], y, groups)):
     # train_indices and test_indices are arrays of the train and test indices for a split (fold).
     # they will not necessarily be the same length, untless the train/test sizes are 0.5/0/5.
@@ -47,8 +47,9 @@ def train_test_split_for_dataloading(debug=False, field = 'hips_2021'):
         df.iloc[train_indices, 1 : -5] = transformed_training
         df.iloc[test_indices,  1 : -5] = transformed_testing
 
-        break # just get one stratified split for now. Deep learning models will take longer to optimize 
-        # than statistical models. 
+        if i == return_split:
+            break # just get one stratified split for now. Deep learning models will take longer to optimize 
+            # than statistical models. 
 
     if debug:
         print(train_indices)
@@ -63,14 +64,21 @@ class FeaturesDataset(torch.utils.data.Dataset):
     This class builds a dataset from a specific field of hyperspectral and LiDAR data that is usable inside a torch
     dataloader. 
     """
-    def __init__(self, field : str, train : bool, test : bool):
+    def __init__(self, field : str, train : bool, test : bool, return_split : int):
+        """
+        field is either 'hips_2021', 'hips_2022', or 'hips_both_years'
+        train and test indicate whether we are instantiating a dataset for training data or testing data. 
+        Both should not be true at the same time.
+
+        return_split indicates which training / testing split out of the 10 folds we return. It must be an integer. 
+        """
         super(FeaturesDataset).__init__()
 
         self.train = train
         self.test = test
 
         # get df of features from the field provided in the constructor
-        self.df, train_indices, test_indices = train_test_split_for_dataloading(field = field)
+        self.df, train_indices, test_indices = train_test_split_for_dataloading(field = field, return_split = return_split)
         self.train_indices = train_indices
         self.test_indices = test_indices
         if train:
@@ -121,9 +129,6 @@ class FeaturesDataset(torch.utils.data.Dataset):
         #print(type(plot_data), type(date_data), type(hybrid_or_inbred_data), type(pedigree_data))
         #print(plot_data, date_data, hybrid_or_inbred_data, pedigree_data)
 
-
-       
-
         # convert to torch tensors
         ground_truth_LAI = np.array(ground_truth_LAI, dtype = np.float64) # for compatibility with pytorch model
         train_or_test_features = np.array(train_or_test_features, dtype = np.float64) # for compatibility with pytorch model
@@ -140,8 +145,8 @@ class FeaturesDataset(torch.utils.data.Dataset):
         return train_or_test_features, ground_truth_LAI, plot_data, self.field_id#, date_data #hybrid_or_inbred_data, pedigree_data
 
 if __name__ == "__main__":
-    training_data = FeaturesDataset(field = 'hips_2022', train=True, test=False)
-    testing_data  = FeaturesDataset(field = 'hips_2022', train=False, test=True)
+    training_data = FeaturesDataset(field = 'hips_2022', train=True, test=False, return_split=5)
+    testing_data  = FeaturesDataset(field = 'hips_2022', train=False, test=True, return_split=5)
 
     training_dataloader = torch.utils.data.DataLoader(training_data, batch_size=1, num_workers = 0, drop_last=False)
     testing_datalodaer  = torch.utils.data.DataLoader(testing_data,  batch_size=1, num_workers = 0, drop_last=False)
@@ -158,3 +163,10 @@ if __name__ == "__main__":
         print(features.shape)
         print(GT.shape)
         print(plot_data, field_id)
+
+    for i in range(10):
+        testing_data = FeaturesDataset(field='hips_2021', train=False, test=True, return_split=i)
+        training_dataloader = torch.utils.data.DataLoader(testing_data, batch_size=1, num_workers = 0, drop_last=False)
+        print(len(training_dataloader))
+
+    

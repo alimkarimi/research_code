@@ -29,61 +29,66 @@ np.random.seed(0)
 
 channel_means = np.load('/Users/alim/Documents/prototyping/research_lab/research_code/analysis/channel_means.npy')[:136]
 
-def collate_function(batch):
-    print(batch[0][0].shape, batch[0][1], batch[0][2].shape, batch[0][3].shape)
-    print(batch[1][0].shape, batch[1][3].shape)
+def collate_fn(batch):
+    # batch comes in with this sort of indexing:
     print('len of batch', len(batch))
-    # batch is a combination of stacked_rows, ground_truth_LAI, freq_data[:136], plot_point_cloud, GDD, PREC
-    #stacked_rows, ground_truth_LAI, freq_data, plot_point_cloud, GDD, PREC = batch
+    print(batch[0][0].shape) # hyp - 4 x 136 x 130 x 42
+    print(batch[0][1].shape) # LAI - (4,)
+    print(batch[0][1])
+    print(batch[0][2][0].shape) # point cloud - 9185 x 3. Note that we will need EACH point cloud in the time series. 
+    # This is indexed by [0][2][point_cloud_t] (point_cloud_t goes from 0 to number of observations in timeseries)
+    print(len(batch[0][2])) # this will be the number of observations in the timeseries (either 3 or 4 in this case)
+    print(batch[0][3].shape) #  GDD
+    print(batch[0][4].shape) # PREC
+    
+    # recombine all hyperspectral data into one B x T x C x H x W tensor. Will need to zero pad the T dim for 
+    # timeseries that are smaller than than the max timeseries in the batch
+
+    # find the largest timeseries (dim T) in the batch:
+    max_timeseries_length = 0
     for i in range(len(batch)):
-        print(batch[i][3].shape)
-    print('got here!')
-    print(type(batch[0]))
-    print('this is batch of batch[:][0]', batch[:][0][0].shape)
-    print('this is batch[0][0].shape', batch[0][0].shape)
-    li_hyp = []
-    li_GT = []
-    li_freq = []
-    li_points = []
-    li_GDD = []
-    li_PREC = []
-    for i in range(len(batch)):
-        print('hyp', batch[i][0].shape)
-        print(type(batch[i][1])) # just a np float64)
-        print('GT', batch[i][1]) 
-        print('freq', batch[i][2].shape)
-        print('points', batch[i][3].shape)
-        print('GDD', batch[i][4])
-        print('PREC', batch[i][5])
-        li_points.append(batch[i][3].shape)
-    max_points = 0
-    for i in li_points:
-        #print('shapes are:', i)
-        if i[0] > max_points:
-            max_points = i[0]
+        temp_series_length = batch[i][0].shape[0]
+        if temp_series_length > max_timeseries_length:
+            max_timeseries_length = temp_series_length
+    B = len(batch)
+    T = max_timeseries_length
 
-    lidar_tensor = torch.zeros(max_points, (len(li_points)) * 3)
-    #print(lidar_tensor.shape)
+    hyperspectral_padded_tensor = torch.zeros((B, T, 136, 130, 42))
+    LAI_tensor = torch.zeros((B,T))
+    GDD_tensor = torch.zeros((B,T))
+    PREC_tensor = torch.zeros((B,T))
 
-    # zero pad lidar data if it isn't the biggest point cloud:
-    print('right before lidar assignment')
-    for i in range(int(lidar_tensor.shape[1] / 3)):
-        #print(li_points[i][0])
-        #print(torch.tensor(batch[i][3]).shape, 'shape of lidar tensor')
-        num_points = li_points[i][0]
-        #print(i*3, i * 3 +3)
-        #print((lidar_tensor.shape[1] / 3 )-1)
-        if i == int(lidar_tensor.shape[0] / 3) - 1:
-            lidar_tensor[0:num_points, i * 3: i * 3:] = torch.tensor(batch[i][3])
-        else:
-            lidar_tensor[0:num_points, i * 3: i * 3 + 3] = torch.tensor(batch[i][3])
+    # assign individual timeseries (T x C x H x W) to hyperspectral_padded_tensor:
+    for b in range(B):
+        hyperspectral_padded_tensor[b] = batch[b][0]
+        LAI_tensor[b] = torch.tensor(batch[b][1])
+        GDD_tensor[b] = batch[b][3]
+        PREC_tensor[b] = batch[b][4]
 
-    print('returning:', batch[:][0])
-        
+    # print('combined hyperspectral data into batch in shp', hyperspectral_padded_tensor.shape)
+    # print('combined LAI data for batch in shp', LAI_tensor.shape)
+    # print('combined GDD data for batch into shape', GDD_tensor.shape)
+    # print('combined PREC data for batch into shape', PREC_tensor.shape)
 
-    return batch[:][0], batch[0][1], batch[0][2], lidar_tensor
+    point_cloud_shapes = torch.zeros((B,T))
+    for b in range(B):
+        for t in range(T):
+            current_pc_shape =  batch[b][2][t].shape[0]
+            point_cloud_shapes[b,t] = current_pc_shape
+            #li_points.append(batch[i][2][0].shape)
 
+    max_points = int(torch.max(point_cloud_shapes))
+    #print('max_points_in_batch:', max_points)
 
+    # create zero padded LiDAR tensor:
+    lidar_tensor = torch.zeros(size=(B, T, max_points, 3)) # B x T x max_points x 3
+
+    for b in range(B):
+        for t in range(T):
+            temp_num_points_in_cloud = int(point_cloud_shapes[b,t])
+            lidar_tensor[b,t, 0:temp_num_points_in_cloud, :] = torch.tensor(batch[b][2][t])
+
+    return hyperspectral_padded_tensor, LAI_tensor, lidar_tensor, GDD_tensor, PREC_tensor
 
 def train_test_split_for_dataloading(debug=False, field = 'hips_2021'):
 
@@ -211,8 +216,8 @@ class FeaturesDataset(torch.utils.data.Dataset):
 
             for t, i in enumerate(data_weather.index):
                 # add GDD and PREC data to tensors. 
-                GDDs[t] = data_weather.iloc[n, 0]
-                PRECs[t] = data_weather.iloc[n, 1]
+                GDDs[t] = data_weather.iloc[t, 0]
+                PRECs[t] = data_weather.iloc[t, 1]
 
             # create empty tensor to hold result of the dataloader output:
 
@@ -256,15 +261,12 @@ class FeaturesDataset(torch.utils.data.Dataset):
                 
                 # stack row plots together:
                 stacked_rows = np.concatenate((resized_img_row_1, resized_img_row_2), axis=2)
-                # print(stacked_rows.shape)
-                # print('HERE!')
-                # print(stacked_rows.max())
+
                 timeseries_hyp_tensor[t] = torch.tensor(stacked_rows)
 
                 # now, process lidar data:
                 # merge point clouds from each time based observation (i.e, row1 and row2 from t1)
                 plot_point_cloud = np.concatenate([lid_r1, lid_r2])
-                #print(plot_point_cloud.shape, 'shape of point cloud concatenated')
 
                 # Normalization of LiDAR data: Normalize each batch. I believe taking the mean of the entire batch introduces
                 # spatial bias.
@@ -278,8 +280,7 @@ class FeaturesDataset(torch.utils.data.Dataset):
                 plot_point_cloud[:,2] = (plot_point_cloud[:,2] - np.min(plot_point_cloud[:,2])) / (np.max(plot_point_cloud[:,2]) - np.min(plot_point_cloud[:,2]))
 
                 timeseries_lidar_list.append(plot_point_cloud)
-                print('here!!!!!!!!!!!!!!!!!!!!')
-                print(timeseries_hyp_tensor.shape, ground_truth_LAI.shape, GDDs.shape, PRECs.shape)           
+                #print(timeseries_hyp_tensor.shape, ground_truth_LAI.shape, GDDs.shape, PRECs.shape)           
             return timeseries_hyp_tensor, ground_truth_LAI, timeseries_lidar_list, GDDs, PRECs
 
         if self.load_individual: # load individual images instead of in a series.
@@ -356,15 +357,11 @@ class FeaturesDataset(torch.utils.data.Dataset):
 
 if __name__ == '__main__':
     #train_test_split_for_dataloading(field='hips_2021')
-    training_data = FeaturesDataset(field = 'hips_both_years', train=True, test=False, debug=True, load_individual=True, 
-    load_series=False)
+    training_data = FeaturesDataset(field = 'hips_2021', train=True, test=False, debug=True, load_individual=False, 
+    load_series=True)
     training_dataloader = torch.utils.data.DataLoader(training_data, batch_size=2, num_workers = 0, drop_last=False,
-                                                        shuffle = True, collate_fn = collate_function)
+                                                        shuffle = True, collate_fn = collate_fn)
     print('len is', training_data.__len__())
     for n, i in enumerate(training_dataloader):
-        # print(i[0].shape, i[1].shape, i[3].shape, i[4].shape)
-        # for x in i[2]:
-        #
-        #      print(x.shape)
-        #print(i[:][:][0].shape, i[1], i[2].shape)
+        print(i[0].shape, i[1].shape, i[2].shape, i[3].shape, i[4].shape)
         print(n)
