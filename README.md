@@ -24,7 +24,7 @@ The plan is to build a transformer network for predicting LAI at every timestep.
 
 ### 
 LSTM architecture:
-![LSTM for traditional Remote Sensing features architecture diagram](models/architecture_diagrams/LSTM_arch_hyperspectral_lidar_weather_fusion.png)
+![LSTM for traditional Remote Sensing features architecture diagram](models/architecture_diagrams/Network Architecture_update.png)
 
 Hyperspectral autencoder architecture:
 ![Hyperspectral autoencoder](models/architecture_diagrams/Hyperspectral_autoencoder_arch.png)
