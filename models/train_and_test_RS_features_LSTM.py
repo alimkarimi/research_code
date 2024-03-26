@@ -53,8 +53,8 @@ field_dict = {
 }
 
 # instantiate dataset
-training_data = FeaturesDataset(field = 'hips_2022', train=True, test=False)
-testing_data     = FeaturesDataset(field = 'hips_2022', train=False, test=True)
+training_data = FeaturesDataset(field = 'hips_2021', train=True, test=False, return_split=0)
+testing_data     = FeaturesDataset(field = 'hips_2021', train=False, test=True, return_split=0)
 
 # instantiate dataloaders for train/test
 training_dataloader = torch.utils.data.DataLoader(training_data, batch_size=1, num_workers = 0, drop_last=False, shuffle=True)
