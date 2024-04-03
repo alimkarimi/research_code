@@ -109,6 +109,7 @@ def load_entire_plot_xyxy(plot_json, plot_id_query, field):
     west_x0, west_y0, a, b, c, d = matches[0] # a, b, c, d are dummy vars
     east_x1, east_y1, e, f, g, h = matches[1] # e, f, g, h are dummy vars
 
+
     return west_x0, west_y0, east_x1, east_y1, plot_id_query
             
 

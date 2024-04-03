@@ -12,6 +12,7 @@ def get_svr_features(debug=False, data_path='2022_f54'):
      - Unique dates of observations are:
       - '20220624' '20220714' '20220721' '20220812' '20220830'
     - This is used for Nitrogen experiments on the same genotype
+    - Plots range from 101-809
 
 
     For HIPS in 2021 only:
