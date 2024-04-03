@@ -5,7 +5,7 @@ LAI is defined as the one sided leaf area divided by a ground area. See below fo
 
 <img src="visualizations/LAI_image.png" width="250" height="250" />
 
-- Importance of LAI: 
+#### Importance of LAI: ####
  - Indicator of hotosynthetic capability of vegetation canopies
  - Important trait for agriculture yield prediction. 
  - Uses from climate modeling, crop yield forecasting, plant breeding.
