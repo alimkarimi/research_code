@@ -1,6 +1,14 @@
 # Overview:
-This repository contains all the code used to do prediction of LAI using UAV based hyperspectral and LiDAR observations.
-Furthermore, weather features like precipitaion and growing degree days are also incorporated into the model.
+This repository contains all the code used to do prediction of Leaf Area Index (LAI) using drone based hyperspectral, LiDAR, and weather observations.
+
+LAI is defined as the one sided leaf area divided by a ground area. See below for an intuitive visualization:
+
+![](visualizations/LAI_image.png)
+
+Importance of LAI: 
+Indicator of hotosynthetic capability of vegetation canopies
+Important trait for agriculture yield prediction. 
+Uses from climate modeling, crop yield forecasting, plant breeding.
 
 There is a significant amount of pre-processing, which is found in the /dataloading and /hyperspectral_lidar_processing folders. 
 
