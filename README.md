@@ -34,9 +34,11 @@ Autoencoder models to build neural representations of LiDAR and hyperspectral da
 #### Sequence Based - Transformer ####
 The transformer currently takes in each timestep of remote sensing feature as an embedding, projects this embedding to the query, key, and value vectors stacked in Q, K, V matrices. We then perform standard self attention using the Q, K, V matrices. We use the first generatation transformer architecture outlined in Vaswani (2017), where residual connection is done before the layer normalizations. To improve the model, I plan on adding multiple transformer blocks (currently, there is only one transformer block which reduces the number of parameters in this model compared to the number of training data points, possibly leading to some underfitting).
 
-### 
+# Model Architectures:
 LSTM architecture::
 ![LSTM for traditional Remote Sensing features architecture diagram](models/architecture_diagrams/NetworkArchitecture_update.png)
 
 Hyperspectral autencoder architecture:
 ![Hyperspectral autoencoder](models/architecture_diagrams/Hyperspectral_autoencoder_arch.png)
+
+Transformer architecture will be added.
