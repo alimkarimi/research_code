@@ -22,13 +22,17 @@ hyperspectra_lidar_weather_dataloader.py loads the hyperspectral and LiDAR data 
 # Models:
 The acutal model code is found in the /models folder. 
 
+#### Statistical Machine Learning: ####
 The statistical machine learning model is the support vector regression. Call statistical_model() with cv_stratify=True means we will do 10 fold cross validation and make sure we have an equal proportion of hybrid and inbreds as is reflected in our existing dataset in our train and test splits. I will add a command line command to kick off the SVR
 
+#### Sequence Based - Long Short Term Memory (LSTM) ####
 The LSTM deep learning model is in the models.py file. Training and testing this LSTM is done with train_and_test_RS_features.py. Command line arguments to customize the hidden state size will be added. Command line arguments will also be added to use the pretrained model.
 
+#### Hyperspectral Autoencoder ####
 Autoencoder models to build neural representations of LiDAR and hyperspectral data are in models.py as well. To train the hyperspectral autoencder, the code is in train_hyp_ae.py. For the LiDAR data encoding, one can use train_lidar_ae.py.
 
-The plan is to build a transformer network for predicting LAI at every timestep. I will add code to train and test this model.
+#### Sequence Based - Transformer ####
+The transformer currently takes in each timestep of remote sensing feature as an embedding, projects this embedding to the query, key, and value vectors stacked in Q, K, V matrices. We then perform standard self attention using the Q, K, V matrices. We use the first generatation transformer architecture outlined in Vaswani (2017), where residual connection is done before the layer normalizations. To improve the model, I plan on adding multiple transformer blocks (currently, there is only one transformer block which reduces the number of parameters in this model compared to the number of training data points, possibly leading to some underfitting).
 
 ### 
 LSTM architecture::
