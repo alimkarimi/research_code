@@ -3,7 +3,7 @@ This repository contains all the code used to do prediction of Leaf Area Index (
 
 LAI is defined as the one sided leaf area divided by a ground area. See below for an intuitive visualization:
 
-![](visualizations/LAI_image.png)
+![](visualizations/LAI_image.png =100x100)
 
 Importance of LAI: 
 Indicator of hotosynthetic capability of vegetation canopies
