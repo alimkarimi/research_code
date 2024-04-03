@@ -4,7 +4,7 @@ import pandas as pd
 
 sys.path.append('..')
 
-from vectorization_scripts.read_purnima_features import get_svr_features
+from dataloading_scripts.read_purnima_features import get_svr_features
 
 df = get_svr_features(debug=False, data_path='hips_2021')
 
