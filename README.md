@@ -1,4 +1,4 @@
-# Overview:
+# Introduction:
 This repository contains all the code used to do prediction of Leaf Area Index (LAI) using drone based hyperspectral, LiDAR, and weather observations.
 
 LAI is defined as the one sided leaf area divided by a ground area. See below for an intuitive visualization:
