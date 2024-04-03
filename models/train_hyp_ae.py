@@ -65,7 +65,7 @@ if cpu_override:
     ae_model = ae_model.to("cpu")
 
 training_data = FeaturesDataset(field = field, train=True, test=False, load_individual=True, load_series = False, debug=False)
-training_dataloader = torch.utils.data.DataLoader(training_data, batch_size=4, num_workers = 0, drop_last=False)
+training_dataloader = torch.utils.data.DataLoader(training_data, batch_size=1, num_workers = 0, drop_last=False)
 
 criterion = nn.MSELoss()
 running_loss = []
@@ -101,7 +101,7 @@ for epoch in range(epochs):
         # we ignore the point cloud
         img = img.to(torch.float32)
         #print(img.dtype)
-        print(img.shape)
+        #print(img.shape)
         img = img.to(device)
         img = torch.squeeze(img, 0)
         #print(img.shape)

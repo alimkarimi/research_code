@@ -1,5 +1,3 @@
-from models import RNN
-
 import torch
 import torch.nn as nn
 from torch import optim
@@ -7,87 +5,65 @@ from torch import optim
 import sys
 sys.path.append('..')
 from dataloading_scripts.feature_dataloader import FeaturesDataset
-from dataloading_scripts.read_purnima_features import get_svr_features
+from dataloading_scripts.dataloading_utils import get_field_metadata, get_subplot_metadata, field_dict
+from models import Transformer
+from hyperspectral_lidar_processing.hyperspectral_plot_extraction import get_visual_hyperspectral_rgb
 
 from matplotlib import pyplot as plt
 
 import numpy as np
+import os
+
+import time
 
 from sklearn.metrics import r2_score, mean_squared_error
 
-epochs = 20
-criterion = nn.MSELoss()
-batch_size = 1
+epochs = 1
+cpu_override=False
+field = 'hips_2021'
+if field == 'hips_2021':
+    timepoints=4
+if field == 'hips_2022':
+    timepoints=3
+# init transformer:
+model = Transformer(input_size = 17, embedding_dim=17, timepoints=timepoints)
 
-torch.manual_seed(0)
-np.random.seed(0)
+# get number of model params:
+total_params = sum(p.numel() for p in model.parameters())
+print("Total number of parameters: {}".format(total_params))
 
-# instantiate model
-rnn  = RNN(batch_size = batch_size, concat_based_LSTM = True, addition_based_LSTM = False,
-           hidden_size = 100, cell_size = 100) # lstm gets instantiated inside RNN class.
-rnn = rnn.to(torch.float32)
+optimizer = optim.Adam(params=model.parameters(), lr= 1e-3, betas = (0.9, 0.99))
 
-# instantiate optimizer
-optimizer = torch.optim.Adam(rnn.parameters(), lr = 1e-3, betas = (0.9, 0.99))
-
-cpu_override = False
-
-if torch.backends.mps.is_available():
-    device = torch.device("mps")
-    rnn = rnn.to(device)
-    print('USING DEVICE:', device)
-else:
-    device = torch.device("cpu")
-    rnn = rnn.to(device)
-    print('USING DEVICE:', device)
-
-if cpu_override:
-    print('CUSTOM OVERRIDE TO CPU EVEN THOUGH GPU IS AVAILABLE')
-    device = torch.device("cpu")
-    rnn = rnn.to("cpu")
-
-field_dict = {
-    1 : 'HIPS 2021',
-    2 : 'HIPS 2022',
-    3 : 'HIPS 2021 + 2022'
-}
 
 # instantiate dataset
-training_data = FeaturesDataset(field = 'hips_2021', train=True, test=False, return_split=0)
-testing_data     = FeaturesDataset(field = 'hips_2021', train=False, test=True, return_split=0)
+training_data = FeaturesDataset(field = field, train=True, test=False, return_split=0)
+testing_data     = FeaturesDataset(field = field, train=False, test=True, return_split=0)
 
 # instantiate dataloaders for train/test
 training_dataloader = torch.utils.data.DataLoader(training_data, batch_size=1, num_workers = 0, drop_last=False, shuffle=True)
 testing_datalodaer  = torch.utils.data.DataLoader(testing_data,  batch_size=1, num_workers = 0, drop_last=False)
 
+criterion = nn.MSELoss()
 running_loss = []
 r_2_list = [] # used in function test_after_epoch
 rmse_list = [] # used in function test_after_epoch
 relative_rmse_list = [] # used in function test_after_epoch
 total_loss = 0
 
-def get_field_metadata(field_id):
-    if field_id == 1:
-        field = 'hips_2021'
-    if field_id == 2:
-        field = 'hips_2022'
-    if field_id == 3:
-        field = 'hips_both_years'
-    df = get_svr_features(debug=False, data_path=field)
+# move models to correct location (GPU, CPU):
+if torch.backends.mps.is_available():
+    device = torch.device("mps")
+    model = model.to(device)
+    print('USING DEVICE:', device, '(GPU)')
+else:
+    device = torch.device("cpu")
+    model = model.to(device)
+    print('USING DEVICE:', device, '(CPU)')
 
-    return df
-
-def get_subplot_metadata(df, plot_id):
-    plot_id = np.array(plot_id.unique(), dtype=np.float64)
-    # query for the pedigree, hybrid/inbred, and dates:
-    pedigree = df[df['Plot'] == int(plot_id)]['pedigree'].unique()
-    hybrid_or_inbred = df[df['Plot'] == int(plot_id)]['hybrid_or_inbred'].unique()
-    dates = df[df['Plot'] == int(plot_id)]['date'].unique()
-    if hybrid_or_inbred.shape[0] != 1 or pedigree.shape[0] != 1:
-        print('WARNING: MULTIPLE PEDIGREES MIXED IN A PLOT PREDICITON')
-
-    return *pedigree, *hybrid_or_inbred, dates
-
+if cpu_override:
+    print('CUSTOM OVERRIDE TO CPU EVEN THOUGH GPU IS AVAILABLE')
+    device = torch.device("cpu")
+    model = model.to("cpu")
 
 def test_after_epoch(epoch, field_id, plot_t_preds=True, plot_1to1=True):
     df = get_field_metadata(field_id) # load the right dataframe so we can get the pedigree/genotype data when plotting.
@@ -122,8 +98,8 @@ def test_after_epoch(epoch, field_id, plot_t_preds=True, plot_1to1=True):
 
         GT = torch.squeeze(GT, 0)
         
-        out = rnn(features)
-        _, _, final_pred, all_pred = out
+        out = model(features)
+        all_pred = out
         #print(final_pred.shape, all_pred.shape, GT.shape)
         # generate plot of prediction vs GT:
         
@@ -167,7 +143,7 @@ def test_after_epoch(epoch, field_id, plot_t_preds=True, plot_1to1=True):
     print('r_2, rmse, relative_rmse testing after epoch' , epoch, ': ', r_2, rmse, relative_rmse)
 
     if plot_t_preds:
-        fig.savefig('/Users/alim/Documents/prototyping/research_lab/research_code/models/GT_vs_pred_over_time/GT_vs_pred_sample_e' + str(epoch) + '_f' + str(int(field_id)) + '.jpg')
+        fig.savefig('/Users/alim/Documents/prototyping/research_lab/research_code/models/GT_vs_pred_over_time/trans_GT_vs_pred_sample_e' + str(epoch) + '_f' + str(int(field_id)) + '.jpg')
         fig.clf() # clear figure for future plots
     if plot_1to1:
         # plot the 1:1 line of predictions, GT values:
@@ -185,17 +161,11 @@ def test_after_epoch(epoch, field_id, plot_t_preds=True, plot_1to1=True):
         plt.gca().set_aspect('equal', adjustable='box')
         plt.legend(loc='lower right')
         # save after creating plot:
-        plt.savefig('/Users/alim/Documents/prototyping/research_lab/research_code/models/one_to_one_plots/one_to_one_e' + str(epoch) + '_f' + str(int(field_id)) + '.jpg')
+        plt.savefig('/Users/alim/Documents/prototyping/research_lab/research_code/models/one_to_one_plots/trans_one_to_one_e' + str(epoch) + '_f' + str(int(field_id)) + '.jpg')
         plt.clf() # clear plot/figure
 
-        
-
-
-# training loop below. Note, not possible to do batched gradient descent. Should implement this, so that we can find a better optimized 
-# function.
 for epoch in range(epochs):
-    field_id = None
-    for i, timeseries in enumerate(training_dataloader):
+    for n, timeseries in enumerate(training_dataloader):
         optimizer.zero_grad()
 
         features, GT, plot_id, field_id_holder = timeseries
@@ -211,50 +181,34 @@ for epoch in range(epochs):
         
         features = torch.squeeze(features, 0)
         GT = torch.squeeze(GT, 0)
-        
-        
-        
-        out = rnn(features)
-        
-        _, _, final_pred, all_pred = out
 
-        loss = criterion(all_pred, GT) # compute loss - should be on same device
-        #print('loss is', loss)
+        out = model(features)
 
-        loss.backward() # compute gradient of loss wrt each parameter
-        optimizer.step() # take a step based on optimizer learning rate and hyper-parameters.
-        total_loss += loss.item()
+        loss = criterion(out, GT)
+        total_loss = total_loss + loss.item()
 
-        if (i + 1) % 50 == 0:
-            avg_loss = total_loss / 50
+        loss.backward()
+
+        optimizer.step()
+
+        if (n + 1) % 10 == 0:
+            avg_loss = total_loss / 10
             running_loss.append(avg_loss)
-            print("Loss in epoch", epoch, " is ", avg_loss)
+            print('loss in epoch', epoch, ' is ', avg_loss)
             total_loss = 0
+    
+    print('Starting test...')
+    test_after_epoch(epoch=epoch, field_id=field_id, plot_t_preds=True, plot_1to1 = True)
 
-    print('KICKING OFF TEST AFTER EPOCH')
-    test_after_epoch(epoch = epoch, field_id = field_id ) 
-
-
-# print training loss curve after training run:
-plt.plot(running_loss)
-plt.xlabel('Iteration * 50')
+plt.plot(running_loss[10:])
+plt.xlabel('Iteration * 10')
 plt.ylabel('Loss')
 plt.title('Loss over training for ' + testing_data.field)
-plt.savefig('training_running_loss_' + testing_data.field + '.jpg')
+plt.savefig('transformer_training_running_loss_' + testing_data.field + '.jpg')
 plt.clf() # close figure so we can save r_2, rmse values later.
-
-# print rmse and r_2 after each epoch:
-plt.plot(r_2_list, label='R^2 values')
-plt.plot(rmse_list, label = 'RMSE values')
-plt.title('R^2 and RMSE on Test Data - ' + testing_data.field)
-plt.xlabel('Epoch')
-plt.ylabel('RMSE or R_2')
-plt.legend()
-plt.savefig('r_2_and_rmse_over_training_' + testing_data.field + '.jpg')
+    
+            
 
 
-# save the model:
-torch.save(rnn.state_dict(), 'trained_rnn_model.pth')
 
-total_params = sum(p.numel() for p in rnn.parameters())
-print("Total number of parameters: {}".format(total_params))
+

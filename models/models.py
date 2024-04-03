@@ -260,10 +260,67 @@ class RNN(nn.Module):
 
 
 class Transformer(nn.Module):
-    def __init__(self):
-        super(Transformer).__init__()
-        self.some = 'placeholder'
+    def __init__(self, input_size = 17, embedding_dim = 17, timepoints=4):
+        super(Transformer, self).__init__()
+        self.input_size = input_size
+        self.embedding_dim = embedding_dim
+        self.timepoints = timepoints
+
+        # initialize learnable positional embedding:
+        self.pos_emb = nn.Parameter(torch.rand(self.timepoints, 17), requires_grad=True)
+
+        # initialize Q, K, V projections
+        self.Q_proj = nn.Linear(self.input_size, self.embedding_dim)
+        self.K_proj = nn.Linear(self.input_size, self.embedding_dim)
+        self.V_proj = nn.Linear(self.input_size, self.embedding_dim)
+
+        # initialize attention:
+        self.mha = nn.MultiheadAttention(embed_dim=self.embedding_dim, num_heads = 1)
+
+        # initialize layer norm
+        self.layer_norm = nn.LayerNorm(self.embedding_dim)
+
+        # initialize MLP matrices
+        self.fc1 = nn.Linear(self.embedding_dim, 2 * self.embedding_dim)
+        self.fc2 = nn.Linear(2 * self.embedding_dim, self.embedding_dim)
+        
+        # activation
+        self.relu = nn.ReLU()
+
+        # transformation to compare to timeseries
+        self.fc3 = nn.Linear(self.embedding_dim, 1)
+        
         # consider using class from pytorch: https://pytorch.org/docs/stable/generated/torch.nn.Transformer.html
+        
+
+    def forward(self, x):
+        x = x + self.pos_emb # add learnable pos embedding to input data. Can also experiment with fixed sin/cos.
+        
+        # below, we have linear projections for x to Q, K, V
+        Q = self.Q_proj(x)
+        K = self.K_proj(x)
+        V = self.V_proj(x)
+        
+        # below, run self attention using Q, K, V
+        out, weights = self.mha(Q, K, V)
+
+        out = x + out # add residual connection before layer norm in transformer block
+
+        out = self.layer_norm(out) # first layer norm
+
+        identity = out # save out of first layer norm in identiy
+
+        out = self.relu(self.fc1(out)) # mlp
+        out = self.relu(self.fc2(out)) # mlp continued
+
+        out = out + identity # add residual connection before second layer norm in transformer block
+
+        out = self.layer_norm(out) # second layer norm of transformer
+
+        out = self.fc3(out) # prediction head to timeseries
+
+        return out
+
 
 class HyperspectralAE(nn.Module):
     """
@@ -292,11 +349,17 @@ class HyperspectralAE(nn.Module):
         self.conv_output_dims_2 = (self.conv_output_dims[0] // 2, self.conv_output_dims[1] + 0 - 3 + 1, self.conv_output_dims[2] + 0 - 3 + 1)
         self.conv_output_dims_2_total_dims = int(self.conv_output_dims_2[0] * self.conv_output_dims_2[1] * self.conv_output_dims_2[2])
         print(self.conv_output_dims_2_total_dims, 'total_dims!') # 162,792
-        self.fc = nn.Linear(9486, 1000)
-        self.fc2 = nn.Linear(1000, 500)
-
-        self.fc3 = nn.Linear(500, 1000)
-        self.fc4 = nn.Linear(1000, 9486)
+        self.encoder_fc1 = nn.Linear(9486, 1000)
+        self.encoder_fc2 = nn.Linear(1000, 500)
+        self.encoder_fc3 = nn.Linear(500, 128)
+        self.encoder_fc4 = nn.Linear(128,64)
+        self.encoder_fc5 = nn.Linear(64,32)
+        
+        self.decoder_fc1 = nn.Linear(32,64)
+        self.decoder_fc2 = nn.Linear(64,128)
+        self.decoder_fc3 = nn.Linear(128, 500)
+        self.decoder_fc4 = nn.Linear(500, 1000)
+        self.decoder_fc5 = nn.Linear(1000, 9486)
 
 
         self.transpose_conv1 = nn.ConvTranspose2d(in_channels=int(input_channels/4), out_channels=int(input_channels/2), kernel_size=3)
@@ -323,9 +386,12 @@ class HyperspectralAE(nn.Module):
         if self.debug:
             print('at flatten')
             print(x.shape)
-        x = self.fc(x)
+        x = self.encoder_fc1(x)
         x = self.relu(x)
-        x = self.fc2(x)
+        x = self.encoder_fc2(x)
+        x = self.relu(self.encoder_fc3(x))
+        x = self.relu(self.encoder_fc4(x))
+        x = self.relu(self.encoder_fc5(x))
         if self.debug:
             print('end of encoder shape:' , x.shape)
         return x, ind_mp1, ind_mp2
@@ -333,10 +399,11 @@ class HyperspectralAE(nn.Module):
     def decoder(self, x, ind_mp1, ind_mp2):
 
         # code to push back up to image size
-        
-        x = self.fc3(x)
-        x = self.relu(x)
-        x = self.fc4(x)
+        x = self.relu(self.decoder_fc1(x))
+        x = self.relu(self.decoder_fc2(x))
+        x = self.relu(self.decoder_fc3(x))
+        x = self.relu(self.decoder_fc4(x))
+        x = self.relu(self.decoder_fc5(x))
         if self.debug:
             print('in decoder - shp is', x.shape)
         
@@ -364,11 +431,12 @@ class HyperspectralAE(nn.Module):
         return x 
 
 class LiDARAE(nn.Module):
-    def __init__(self, encoder_only = False, debug=False):
+    def __init__(self, encoder_only = False, debug=False, latent_dim = 32):
         super(LiDARAE, self).__init__()
         self.encoder_only = encoder_only
         self.debug = debug
-        latent_dim = 32
+        latent_dim = latent_dim
+        self.latent_dim = latent_dim
 
         # encoder ops
         self.fc1 = nn.Linear(3, 128)
@@ -391,15 +459,18 @@ class LiDARAE(nn.Module):
         x = self.relu(x)
         x = self.fc3(x)
         kernel_size = x.shape[1]
-        maxpool1d = nn.MaxPool1d(kernel_size=x.shape[1], return_indices=True)
+        maxpool2d = nn.MaxPool2d(kernel_size=(x.shape[1],1), return_indices=True)
         if self.debug:
-            print('kernel size is', x.shape[1])
-        x = torch.permute(x, (0, 2, 1)) # permute because maxpool runs on the last dimension. We want the maxpool to 
+            print('kernel size is', (x.shape[1],1))
+        #x = torch.permute(x, (0, 2, 1)) # permute because maxpool runs on the last dimension. We want the maxpool to 
         # aggregate featuers along the number of LiDAR points.
         if self.debug:
             print(x.shape, 'shape after permute')
-        x, ind = maxpool1d(x)
+            print('this is x before maxpool:', x)
+        
+        x, ind = maxpool2d(x)
         if self.debug:
+            print('this is x after maxpool:', x)
             print('after max pool shape of output is' ,x.shape)
 
         return x, ind, kernel_size
@@ -409,11 +480,12 @@ class LiDARAE(nn.Module):
             print('shape of kernel',kernel_size)
             print(x.shape, 'shape before unmaxpool')
             print('indices shape', ind.shape)
-        maxunpool1d = nn.MaxUnpool1d(kernel_size=kernel_size)
-        x = maxunpool1d(x, ind)
+        maxunpool2d = nn.MaxUnpool2d(kernel_size=(kernel_size,1))
+        x = maxunpool2d(x, ind)
         if self.debug:
-            print('shape after maxpool', x.shape)
-        x = torch.permute(x, (0,2,1)) # permute again now that maxunpool is completed. We want to perform FC operations 
+            print('shape after unmaxpool', x.shape)
+            print('result after unmaxpool:', x)
+        #x = torch.permute(x, (0,2,1)) # permute again now that maxunpool is completed. We want to perform FC operations 
         # on a fixed dimension as that is the only way we can train learnable parameters.
         x = self.fc4(x)
         x = self.relu(x)
