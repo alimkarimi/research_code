@@ -18,8 +18,8 @@ def train_test_split_for_dataloading(debug=False, field = 'hips_2021', return_sp
         groups = df['pedigree']
         y = df['hybrid_or_inbred'] # used for stratification
     else:
-        groups = df['nitrogen_treatment']
-        y = df['date'] 
+        groups = df['Plot'] # group by plot id
+        y = df['nitrogen_treatment'].astype('int') # used for stratification
 
     # make a train and test split
     train_indices = None
@@ -99,6 +99,8 @@ class FeaturesDataset(torch.utils.data.Dataset):
             self.field_id = 2
         if self.field == 'hips_both_years':
             self.field_id = 3
+        if self.field == '2022_f54':
+            self.field_id = 4
         
         print(len(train_indices), "length of TRAINING")
         print(len(test_indices), "LENGTH OF TEST")
@@ -145,28 +147,17 @@ class FeaturesDataset(torch.utils.data.Dataset):
         return train_or_test_features, ground_truth_LAI, plot_data, self.field_id#, date_data #hybrid_or_inbred_data, pedigree_data
 
 if __name__ == "__main__":
-    training_data = FeaturesDataset(field = 'hips_2022', train=True, test=False, return_split=5)
-    testing_data  = FeaturesDataset(field = 'hips_2022', train=False, test=True, return_split=5)
+    training_data = FeaturesDataset(field = '2022_f54', train=True, test=False, return_split=0)
+    testing_data  = FeaturesDataset(field = '2022_f54', train=False, test=True, return_split=0)
 
-    training_dataloader = torch.utils.data.DataLoader(training_data, batch_size=1, num_workers = 0, drop_last=False)
+    training_dataloader = torch.utils.data.DataLoader(training_data, batch_size=1, num_workers = 0, drop_last=False, shuffle=True)
     testing_datalodaer  = torch.utils.data.DataLoader(testing_data,  batch_size=1, num_workers = 0, drop_last=False)
-    print('created dataloader... starting enumerating.')
-    print(len(training_dataloader))
-    print(len(testing_datalodaer))
-    for n, (features, GT, plot_data, field_id) in enumerate(training_dataloader):
-        print(n)
-        print(features.shape)
-        print(GT.shape)
 
-    for n, (features, GT, plot_data, field_id) in enumerate(testing_datalodaer):
-        print(n)
-        print(features.shape)
-        print(GT.shape)
-        print(plot_data, field_id)
+    for n, data in enumerate(training_dataloader):
+        train_or_test_features, ground_truth_LAI, plot_data, field_id = data
+        print(train_or_test_features.shape, ground_truth_LAI.shape, plot_data)
 
-    for i in range(10):
-        testing_data = FeaturesDataset(field='hips_2021', train=False, test=True, return_split=i)
-        training_dataloader = torch.utils.data.DataLoader(testing_data, batch_size=1, num_workers = 0, drop_last=False)
-        print(len(training_dataloader))
+
+
 
     
