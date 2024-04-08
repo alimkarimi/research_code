@@ -49,12 +49,13 @@ if cpu_override:
 field_dict = {
     1 : 'HIPS 2021',
     2 : 'HIPS 2022',
-    3 : 'HIPS 2021 + 2022'
+    3 : 'HIPS 2021 + 2022',
+    4 : 'N-Variation 2022'
 }
 
 # instantiate dataset
-training_data = FeaturesDataset(field = 'hips_2021', train=True, test=False, return_split=0)
-testing_data     = FeaturesDataset(field = 'hips_2021', train=False, test=True, return_split=0)
+training_data = FeaturesDataset(field = '2022_f54', train=True, test=False, return_split=0)
+testing_data     = FeaturesDataset(field = '2022_f54', train=False, test=True, return_split=0)
 
 # instantiate dataloaders for train/test
 training_dataloader = torch.utils.data.DataLoader(training_data, batch_size=1, num_workers = 0, drop_last=False, shuffle=True)
@@ -73,6 +74,8 @@ def get_field_metadata(field_id):
         field = 'hips_2022'
     if field_id == 3:
         field = 'hips_both_years'
+    if field_id == 4:
+        field = '2022_f54'
     df = get_svr_features(debug=False, data_path=field)
 
     return df
@@ -81,12 +84,13 @@ def get_subplot_metadata(df, plot_id):
     plot_id = np.array(plot_id.unique(), dtype=np.float64)
     # query for the pedigree, hybrid/inbred, and dates:
     pedigree = df[df['Plot'] == int(plot_id)]['pedigree'].unique()
+    nitrogen_treatment = df[df['Plot'] == int(plot_id)]['nitrogen_treatment'].unique()
     hybrid_or_inbred = df[df['Plot'] == int(plot_id)]['hybrid_or_inbred'].unique()
     dates = df[df['Plot'] == int(plot_id)]['date'].unique()
-    if hybrid_or_inbred.shape[0] != 1 or pedigree.shape[0] != 1:
-        print('WARNING: MULTIPLE PEDIGREES MIXED IN A PLOT PREDICITON')
+    if hybrid_or_inbred.shape[0] != 1 or pedigree.shape[0] != 1 or nitrogen_treatment.shape[0] != 1:
+        print('WARNING: MULTIPLE PEDIGREES OR N-TREATMENTS MIXED IN A PLOT PREDICITON')
 
-    return *pedigree, *hybrid_or_inbred, dates
+    return *pedigree, *hybrid_or_inbred, *nitrogen_treatment, dates
 
 
 def test_after_epoch(epoch, field_id, plot_t_preds=True, plot_1to1=True):
@@ -135,7 +139,7 @@ def test_after_epoch(epoch, field_id, plot_t_preds=True, plot_1to1=True):
         if plot_t_preds:
             # get the right pedigree and hybrid/inbred data for the plot:
             metadata = get_subplot_metadata(df, plot_id)
-            pedigree, hybrid_inbred, dates = metadata
+            pedigree, hybrid_inbred, nitrogen_treatment, dates = metadata
             # the lists above will be needed to compute r_2_avgs and rmse_avgs after the entire testing sample is iterated through.
             # plot GT vs Predicted:
             row_idx= n // cols  # Calculate the row index
