@@ -258,16 +258,18 @@ class RNN(nn.Module):
         
         return ct, ht, pred, predictions_in_series # prediction is final prediciton. predictions_in_series is every timestep's prediction.
 
+class TransformerBlock(nn.Module):
+    """
+    Transformers have multiple transformer "blocks", each with their own parameterized Q, K, V projection matrices.
 
-class Transformer(nn.Module):
-    def __init__(self, input_size = 17, embedding_dim = 17, timepoints=4):
-        super(Transformer, self).__init__()
+    This class is meant to instantiate and run those blocks. The number of blocks instantiated is controlled by the 
+    Transformer class. Default is 4. 
+    """
+    def __init__(self, input_size=17, embedding_dim = 17):
+        super(TransformerBlock, self).__init__()
+
         self.input_size = input_size
         self.embedding_dim = embedding_dim
-        self.timepoints = timepoints
-
-        # initialize learnable positional embedding:
-        self.pos_emb = nn.Parameter(torch.rand(self.timepoints, 17), requires_grad=True)
 
         # initialize Q, K, V projections
         self.Q_proj = nn.Linear(self.input_size, self.embedding_dim)
@@ -287,15 +289,8 @@ class Transformer(nn.Module):
         # activation
         self.relu = nn.ReLU()
 
-        # transformation to compare to timeseries
-        self.fc3 = nn.Linear(self.embedding_dim, 1)
-        
-        # consider using class from pytorch: https://pytorch.org/docs/stable/generated/torch.nn.Transformer.html
-        
-
     def forward(self, x):
-        x = x + self.pos_emb # add learnable pos embedding to input data. Can also experiment with fixed sin/cos.
-        
+        # positional embedding already is taken care of in the Transformer class
         # below, we have linear projections for x to Q, K, V
         Q = self.Q_proj(x)
         K = self.K_proj(x)
@@ -317,7 +312,38 @@ class Transformer(nn.Module):
 
         out = self.layer_norm(out) # second layer norm of transformer
 
-        out = self.fc3(out) # prediction head to timeseries
+        return out
+
+
+class Transformer(nn.Module):
+    def __init__(self, input_size = 17, embedding_dim = 17, timepoints=4, num_transformer_blocks=6):
+        super(Transformer, self).__init__()
+        self.input_size = input_size
+        self.embedding_dim = embedding_dim
+        self.timepoints = timepoints
+
+        self.transformer_blocks = nn.ModuleList([
+            TransformerBlock(input_size=input_size, embedding_dim=embedding_dim)
+            for _ in range(num_transformer_blocks)
+        ])
+
+        # # initialize learnable positional embedding:
+        self.pos_emb = nn.Parameter(torch.rand(self.timepoints, 17), requires_grad=True)
+
+        # transformation to compare to timeseries
+        self.fc3 = nn.Linear(self.embedding_dim, 1)
+        
+        # consider using class from pytorch: https://pytorch.org/docs/stable/generated/torch.nn.Transformer.html
+        
+
+    def forward(self, x):
+        x = x + self.pos_emb # add learnable pos embedding to input data. Can also experiment with fixed sin/cos.
+
+        # iterate through each transformer block.
+        for block in self.transformer_blocks:
+            x = block(x)
+
+        out = self.fc3(x) # prediction head to timeseries
 
         return out
 
