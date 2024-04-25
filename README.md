@@ -34,7 +34,7 @@ The LSTM deep learning model is in the models.py file. Training and testing this
 Autoencoder models to build neural representations of LiDAR and hyperspectral data are in models.py as well. To train the hyperspectral autoencder, the code is in train_hyp_ae.py. For the LiDAR data encoding, one can use train_lidar_ae.py.
 
 #### Sequence Based - Transformer ####
-The transformer currently takes in each timestep of remote sensing feature as an embedding, projects this embedding to the query, key, and value vectors stacked in Q, K, V matrices. We then perform standard self attention using the Q, K, V matrices. I use the first generatation transformer architecture outlined in Vaswani (2017), where residual connection is done before the layer normalizations. To improve the model, I plan on adding multiple transformer blocks (currently, there is only one transformer block which reduces the number of parameters in this model compared to the number of training data points, possibly leading to some underfitting).
+The transformer currently takes in each timestep of remote sensing feature as an embedding, projects this embedding to the query, key, and value vectors stacked in Q, K, V matrices. We then perform standard self attention using the Q, K, V matrices. I use the first generatation transformer architecture outlined in Vaswani (2017), where residual connection is done before the layer normalizations. Currently, there is a default of 8 transformer blocks that perform self attention.
 
 # Model Architectures:
 LSTM architecture::
@@ -43,4 +43,5 @@ LSTM architecture::
 Hyperspectral autencoder architecture:
 ![Hyperspectral autoencoder](models/architecture_diagrams/Hyperspectral_autoencoder_arch.png)
 
-Transformer architecture will be added.
+Transformer architecture:
+![Transformer for timeseries prediction architecture](models/architecture_diagrams/Transformer_arch.png)
