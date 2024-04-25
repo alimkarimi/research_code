@@ -263,7 +263,7 @@ class TransformerBlock(nn.Module):
     Transformers have multiple transformer "blocks", each with their own parameterized Q, K, V projection matrices.
 
     This class is meant to instantiate and run those blocks. The number of blocks instantiated is controlled by the 
-    Transformer class. Default is 4. 
+    Transformer class. Default is 6. 
     """
     def __init__(self, input_size=17, embedding_dim = 17):
         super(TransformerBlock, self).__init__()
@@ -330,7 +330,7 @@ class Transformer(nn.Module):
         # # initialize learnable positional embedding:
         self.pos_emb = nn.Parameter(torch.rand(self.timepoints, 17), requires_grad=True)
 
-        # transformation to compare to timeseries
+        # transformation to number of points in timeseries to eventually compute loss
         self.fc3 = nn.Linear(self.embedding_dim, 1)
         
         # consider using class from pytorch: https://pytorch.org/docs/stable/generated/torch.nn.Transformer.html
@@ -342,7 +342,7 @@ class Transformer(nn.Module):
         # iterate through each transformer block.
         for block in self.transformer_blocks:
             x = block(x)
-
+            
         out = self.fc3(x) # prediction head to timeseries
 
         return out
