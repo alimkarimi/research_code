@@ -258,6 +258,67 @@ class RNN(nn.Module):
         
         return ct, ht, pred, predictions_in_series # prediction is final prediciton. predictions_in_series is every timestep's prediction.
 
+class CustomMultiHeadedAttention(nn.Module):
+    """
+    Perform multi-headed attention in an uneven way so that each attention head attends to a single data
+    modality. For example, for a 17 dimensional vector have one head attend to hyperspectral, another
+    attend to LiDAR, and the last attend to weather data
+    """
+    def __init__(self, embedding_dim=17, hs_size = 8, lidar_size=7, weather_size=2):
+        super(CustomMultiHeadedAttention, self).__init__()
+
+        self.embedding_dim = embedding_dim
+        self.hs_size= hs_size
+        self.lidar_size = lidar_size
+        self.weather_size = weather_size
+
+        self.Q_proj_hs = nn.Linear(hs_size, hs_size)
+        self.K_proj_hs = nn.Linear(hs_size, hs_size)
+        self.V_proj_hs = nn.Linear(hs_size, hs_size)
+
+        self.Q_proj_lidar = nn.Linear(lidar_size, lidar_size)
+        self.K_proj_lidar = nn.Linear(lidar_size, lidar_size)
+        self.V_proj_lidar = nn.Linear(lidar_size, lidar_size)
+
+        self.Q_proj_weather = nn.Linear(weather_size, weather_size)
+        self.K_proj_weather = nn.Linear(weather_size, weather_size)
+        self.V_proj_weather = nn.Linear(weather_size, weather_size)
+
+        self.mha_hs = nn.MultiheadAttention(embed_dim=self.hs_size, num_heads=1)
+        self.mha_lidar = nn.MultiheadAttention(embed_dim=self.lidar_size, num_heads=1)
+        self.mha_weather = nn.MultiheadAttention(embed_dim=self.weather_size, num_heads=1)
+
+    def forward(self, x):
+        x_hs = x[:, 7:15]
+        x_lidar = x[:, 0:7]
+        x_weather = x[:, 15:]
+
+        Q_hs = self.Q_proj_hs(x_hs)
+        K_hs = self.K_proj_hs(x_hs)
+        V_hs = self.V_proj_hs(x_hs)
+
+        Q_lidar = self.Q_proj_lidar(x_lidar)
+        K_lidar = self.K_proj_lidar(x_lidar)
+        V_lidar = self.V_proj_lidar(x_lidar)
+
+        Q_weather = self.Q_proj_weather(x_weather)
+        K_weather = self.K_proj_weather(x_weather)
+        V_weather = self.V_proj_weather(x_weather)
+
+        # now that we have queries, keys, vectors from the learned Q, K, V projections, we can apply attention 
+        # separately to each modality
+
+        out_hs, weights_hs = self.mha_hs(Q_hs, K_hs, V_hs)
+        out_lidar, weights_lidar = self.mha_lidar(Q_lidar, K_lidar, V_lidar)
+        out_weather, weights_weather = self.mha_weather(Q_weather, K_weather, V_weather)
+
+        # concatenate modalities back
+        concat_heads = torch.concat([out_hs, out_lidar, out_weather], axis=1)
+
+        return concat_heads
+
+
+
 class TransformerBlock(nn.Module):
     """
     Transformers have multiple transformer "blocks", each with their own parameterized Q, K, V projection matrices.
@@ -265,19 +326,23 @@ class TransformerBlock(nn.Module):
     This class is meant to instantiate and run those blocks. The number of blocks instantiated is controlled by the 
     Transformer class. Default is 6. 
     """
-    def __init__(self, input_size=17, embedding_dim = 17):
+    def __init__(self, input_size=17, embedding_dim = 17, custom_mha=True):
         super(TransformerBlock, self).__init__()
 
         self.input_size = input_size
         self.embedding_dim = embedding_dim
+        self.custom_mha = custom_mha
+        
+        if self.custom_mha:
+            self.mha = CustomMultiHeadedAttention()
+        else:
+            # initialize Q, K, V projections for single headed attention
+            self.Q_proj = nn.Linear(self.input_size, self.embedding_dim)
+            self.K_proj = nn.Linear(self.input_size, self.embedding_dim)
+            self.V_proj = nn.Linear(self.input_size, self.embedding_dim)
 
-        # initialize Q, K, V projections
-        self.Q_proj = nn.Linear(self.input_size, self.embedding_dim)
-        self.K_proj = nn.Linear(self.input_size, self.embedding_dim)
-        self.V_proj = nn.Linear(self.input_size, self.embedding_dim)
-
-        # initialize attention:
-        self.mha = nn.MultiheadAttention(embed_dim=self.embedding_dim, num_heads = 1)
+            # initialize attention:
+            self.mha = nn.MultiheadAttention(embed_dim=self.embedding_dim, num_heads = 1)
 
         # initialize layer norm
         self.layer_norm = nn.LayerNorm(self.embedding_dim)
@@ -292,12 +357,15 @@ class TransformerBlock(nn.Module):
     def forward(self, x):
         # positional embedding already is taken care of in the Transformer class
         # below, we have linear projections for x to Q, K, V
-        Q = self.Q_proj(x)
-        K = self.K_proj(x)
-        V = self.V_proj(x)
-        
-        # below, run self attention using Q, K, V
-        out, weights = self.mha(Q, K, V)
+        if self.custom_mha:
+            out = self.mha(x)
+        else:
+            Q = self.Q_proj(x)
+            K = self.K_proj(x)
+            V = self.V_proj(x)
+            
+            # below, run self attention using Q, K, V
+            out, weights = self.mha(Q, K, V)
 
         out = x + out # add residual connection before layer norm in transformer block
 
@@ -316,14 +384,14 @@ class TransformerBlock(nn.Module):
 
 
 class Transformer(nn.Module):
-    def __init__(self, input_size = 17, embedding_dim = 17, timepoints=4, num_transformer_blocks=6):
+    def __init__(self, input_size = 17, embedding_dim = 17, timepoints=4, num_transformer_blocks=6, custom_mha=True):
         super(Transformer, self).__init__()
         self.input_size = input_size
         self.embedding_dim = embedding_dim
         self.timepoints = timepoints
 
         self.transformer_blocks = nn.ModuleList([
-            TransformerBlock(input_size=input_size, embedding_dim=embedding_dim)
+            TransformerBlock(input_size=input_size, embedding_dim=embedding_dim, custom_mha=custom_mha)
             for _ in range(num_transformer_blocks)
         ])
 
@@ -342,7 +410,7 @@ class Transformer(nn.Module):
         # iterate through each transformer block.
         for block in self.transformer_blocks:
             x = block(x)
-            
+
         out = self.fc3(x) # prediction head to timeseries
 
         return out
@@ -827,9 +895,17 @@ if __name__ == "__main__":
     # svr(debug=False, produce_plot=True, cross_validation=False, field_id = 'hips_both_years', cv_stratify=True, groups=False)
     # svr(debug=False, produce_plot=True, cross_validation=False, field_id = 'hips_2021', cv_stratify=True, groups=False)
     # svr(debug=False, produce_plot=True, cross_validation=False, field_id = 'hips_both_years', cv_stratify=True, groups=False)
-    svr_model = statistical_model(field_id='hips_2022')
-    svr_model.svr(debug=False, produce_plot=True, cross_validation=False, cv_stratify=True, groups=False,
-        grid_search=True)
+    # svr_model = statistical_model(field_id='hips_2022')
+    # svr_model.svr(debug=False, produce_plot=True, cross_validation=False, cv_stratify=True, groups=False,
+    #     grid_search=True)
+
+    x = torch.rand((5, 17))
+    print(x.shape)
+
+    customMHA = CustomMultiHeadedAttention()
+    customMHA(x)
+    
+
 
 
 
