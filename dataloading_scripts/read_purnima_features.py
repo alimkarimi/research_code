@@ -188,23 +188,40 @@ def get_svr_features(debug=False, data_path='2022_f54'):
                 df.loc[row, 'pedigree'] = temp_pedigree                
 
     if data_path == '2022_f54':
-        # to append hybrid/inbred, pedigree, and nitorgen treatment type for field 54.
+        # to append hybrid/inbred, pedigree, nitorgen treatment, and SpATS adjusted LAI for field 54.
         df['hybrid_or_inbred'] = 'no_variants_for_nitrogen_treatment'
         df['pedigree'] = 'no_variants_for_nitrogen_treatment'
         df['nitrogen_treatment'] = None
+        df['spats_adj_LAI'] = None
         nitrogen_treatment_file = '/Users/alim/Documents/prototyping/research_lab/nitrogen_data/nitrogen_rate.xlsx'
+        spats_adjusted_LAI_file = '/Users/alim/Documents/prototyping/research_lab/data_from_Purnima/Features/LAI_Data/Field_54/LiDAR_date_SPATS.xlsx'
         df_nitrogen_treatment = pd.read_excel(nitrogen_treatment_file)
+        df_spats_adjusted_LAI = pd.read_excel(spats_adjusted_LAI_file)
 
         for row in range(df.shape[0]):
             # get plot id:
             temp_plot_id = df.loc[row, 'Plot']
+
+            # get date (only needed for SpATS adjusted LAI):
+            temp_date = df.loc[row, 'date']
+            #print('temp date is', temp_date)
             
             # get nitrogen treatment for that plot from df_nitrogen_treatment
             temp_nitrogen_rate = df_nitrogen_treatment[df_nitrogen_treatment['Plot'] == temp_plot_id]['Nit_rate']
             
             # add the nitrogen tretment to the dataframe we want to return
             df.loc[row, 'nitrogen_treatment'] = int(temp_nitrogen_rate.values)
-            
+
+            # get the SpATS adjusted LAI for a given plot and date from the spats_adjusted_LAI file:
+            # first, get the right row by querying for the row(s) that contain the temp_plot_id:
+            temp_row_query = df_spats_adjusted_LAI[df_spats_adjusted_LAI['Plot'] == temp_plot_id] 
+
+            # now, filter that row_query for the date we want to retrieve:
+            temp_adj_LAI = temp_row_query[int(temp_date)] # cast temp_date to int because in df_spats_adjusted_LAI, 
+            # date column dtypes are ints.
+
+            # now, add that extracted temp_adj_LAI.value to the main df we will return from this function:
+            df.loc[row, 'spats_adj_LAI'] = float(temp_adj_LAI)
 
             
     if debug:
@@ -366,7 +383,7 @@ def read_ground_truth(debug=False, field="f54"):
 
 
 if __name__ == "__main__":
-    df = get_svr_features(debug=True, data_path='hips_both_years')
+    df = get_svr_features(debug=True, data_path='2022_f54')
     total_nan_count = df.isna().sum().sum()
     print('nan count is', total_nan_count)
 
