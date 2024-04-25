@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from torch import optim
+import dask.dataframe as dd
 
 import sys
 sys.path.append('..')
@@ -18,15 +19,17 @@ import time
 
 from sklearn.metrics import r2_score, mean_squared_error
 
-epochs = 1
+epochs = 20
 cpu_override=False
-field = 'hips_2021'
+field = 'hips_2022'
 if field == 'hips_2021':
     timepoints=4
 if field == 'hips_2022':
     timepoints=3
+if field == '2022_f54':
+    timepoints=5
 # init transformer:
-model = Transformer(input_size = 17, embedding_dim=17, timepoints=timepoints)
+model = Transformer(input_size = 17, embedding_dim=17, timepoints=timepoints, num_transformer_blocks=8)
 
 # get number of model params:
 total_params = sum(p.numel() for p in model.parameters())
@@ -111,7 +114,7 @@ def test_after_epoch(epoch, field_id, plot_t_preds=True, plot_1to1=True):
         if plot_t_preds:
             # get the right pedigree and hybrid/inbred data for the plot:
             metadata = get_subplot_metadata(df, plot_id)
-            pedigree, hybrid_inbred, dates = metadata
+            pedigree, hybrid_inbred, nitrogen_treatment, dates = metadata
             # the lists above will be needed to compute r_2_avgs and rmse_avgs after the entire testing sample is iterated through.
             # plot GT vs Predicted:
             row_idx= n // cols  # Calculate the row index
@@ -120,7 +123,10 @@ def test_after_epoch(epoch, field_id, plot_t_preds=True, plot_1to1=True):
             ax[row_idx, col_idx].plot(dates, GT.cpu().detach().numpy(), label='Ground Truth')
             ax[row_idx, col_idx].plot(dates, all_pred.cpu().detach().numpy(), label = 'Prediction')
             ax[row_idx, col_idx].legend()
-            ax[row_idx, col_idx].set_title('Predictions for ' + pedigree + ': ' + dates[0][0:4])
+            if field_id <= 3: # make sure the plot title makes logical sense for the evaluation task
+                ax[row_idx, col_idx].set_title('Predictions for ' + pedigree + ': ' + dates[0][0:4])
+            if field_id > 3: # make sure the plot title makes logical sense for the evaluation task
+                ax[row_idx, col_idx].set_title('Predictions for ' + str(nitrogen_treatment) + ': ' + dates[0][0:4])
             ax[row_idx, col_idx].set_xlabel('Date')
             ax[row_idx, col_idx].set_ylabel('LAI')
 

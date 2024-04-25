@@ -15,7 +15,7 @@ import numpy as np
 
 from sklearn.metrics import r2_score, mean_squared_error
 
-epochs = 20
+epochs = 50
 criterion = nn.MSELoss()
 batch_size = 1
 
@@ -28,7 +28,7 @@ rnn  = RNN(batch_size = batch_size, concat_based_LSTM = True, addition_based_LST
 rnn = rnn.to(torch.float32)
 
 # instantiate optimizer
-optimizer = torch.optim.Adam(rnn.parameters(), lr = 1e-3, betas = (0.9, 0.99))
+optimizer = torch.optim.Adam(rnn.parameters(), lr = 0.0003, betas = (0.9, 0.99))
 
 cpu_override = False
 
@@ -54,8 +54,8 @@ field_dict = {
 }
 
 # instantiate dataset
-training_data = FeaturesDataset(field = '2022_f54', train=True, test=False, return_split=0)
-testing_data     = FeaturesDataset(field = '2022_f54', train=False, test=True, return_split=0)
+training_data = FeaturesDataset(field = 'hips_2021', train=True, test=False, return_split=0)
+testing_data     = FeaturesDataset(field = 'hips_2021', train=False, test=True, return_split=0)
 
 # instantiate dataloaders for train/test
 training_dataloader = torch.utils.data.DataLoader(training_data, batch_size=1, num_workers = 0, drop_last=False, shuffle=True)
@@ -148,7 +148,10 @@ def test_after_epoch(epoch, field_id, plot_t_preds=True, plot_1to1=True):
             ax[row_idx, col_idx].plot(dates, GT.cpu().detach().numpy(), label='Ground Truth')
             ax[row_idx, col_idx].plot(dates, all_pred.cpu().detach().numpy(), label = 'Prediction')
             ax[row_idx, col_idx].legend()
-            ax[row_idx, col_idx].set_title('Predictions for ' + pedigree + ': ' + dates[0][0:4])
+            if field_id <= 3: # make sure the plot title makes logical sense for the evaluation task
+                ax[row_idx, col_idx].set_title('Predictions for ' + pedigree + ': ' + dates[0][0:4])
+            if field_id > 3: # make sure the plot title makes logical sense for the evaluation task
+                ax[row_idx, col_idx].set_title('Predictions for ' + str(nitrogen_treatment) + ': ' + dates[0][0:4])
             ax[row_idx, col_idx].set_xlabel('Date')
             ax[row_idx, col_idx].set_ylabel('LAI')
 

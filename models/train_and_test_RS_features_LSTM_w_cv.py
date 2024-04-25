@@ -28,13 +28,13 @@ y_true_all_folds = [] # to compute r2, rmse, and rel rmse for ALL testing data
 
 for k_fold in range(num_folds):
 
-    # instantiate model
+    # instantiate new model for each fold
     rnn  = RNN(batch_size = batch_size, concat_based_LSTM = True, addition_based_LSTM = False,
             hidden_size = 100, cell_size = 100) # lstm gets instantiated inside RNN class.
     rnn = rnn.to(torch.float32)
 
     # instantiate optimizer
-    optimizer = torch.optim.Adam(rnn.parameters(), lr = 1e-3, betas = (0.9, 0.99))
+    optimizer = torch.optim.Adam(rnn.parameters(), lr = 0.0005, betas = (0.9, 0.99))
 
     cpu_override = False
 
@@ -55,12 +55,13 @@ for k_fold in range(num_folds):
     field_dict = {
         1 : 'HIPS 2021',
         2 : 'HIPS 2022',
-        3 : 'HIPS 2021 + 2022'
+        3 : 'HIPS 2021 + 2022',
+        4 : 'N-Experiments'
     }
 
     # instantiate dataset
-    training_data = FeaturesDataset(field = 'hips_2022', train=True, test=False, return_split=k_fold)
-    testing_data     = FeaturesDataset(field = 'hips_2022', train=False, test=True, return_split=k_fold)
+    training_data = FeaturesDataset(field = '2022_f54', train=True, test=False, return_split=k_fold)
+    testing_data     = FeaturesDataset(field = '2022_f54', train=False, test=True, return_split=k_fold)
 
     # instantiate dataloaders for train/test
     training_dataloader = torch.utils.data.DataLoader(training_data, batch_size=1, num_workers = 0, drop_last=False, shuffle=True)
@@ -79,6 +80,8 @@ for k_fold in range(num_folds):
             field = 'hips_2022'
         if field_id == 3:
             field = 'hips_both_years'
+        if field_id == 4:
+            field = '2022_f54'
         df = get_svr_features(debug=False, data_path=field)
 
         return df
@@ -87,12 +90,13 @@ for k_fold in range(num_folds):
         plot_id = np.array(plot_id.unique(), dtype=np.float64)
         # query for the pedigree, hybrid/inbred, and dates:
         pedigree = df[df['Plot'] == int(plot_id)]['pedigree'].unique()
+        nitrogen_treatment = df[df['Plot'] == int(plot_id)]['nitrogen_treatment'].unique()
         hybrid_or_inbred = df[df['Plot'] == int(plot_id)]['hybrid_or_inbred'].unique()
         dates = df[df['Plot'] == int(plot_id)]['date'].unique()
         if hybrid_or_inbred.shape[0] != 1 or pedigree.shape[0] != 1:
             print('WARNING: MULTIPLE PEDIGREES MIXED IN A PLOT PREDICITON')
 
-        return *pedigree, *hybrid_or_inbred, dates
+        return *pedigree, *hybrid_or_inbred, *nitrogen_treatment, dates
 
 
     def test_after_epoch(epoch, field_id, plot_t_preds=True, plot_1to1=True):
@@ -149,7 +153,7 @@ for k_fold in range(num_folds):
             if plot_t_preds:
                 # get the right pedigree and hybrid/inbred data for the plot:
                 metadata = get_subplot_metadata(df, plot_id)
-                pedigree, hybrid_inbred, dates = metadata
+                pedigree, hybrid_inbred, nitrogen_treatment, dates = metadata
                 dates_xaxis = [date[4:] for date in dates]
                 # the lists above will be needed to compute r_2_avgs and rmse_avgs after the entire testing sample is iterated through.
                 # plot GT vs Predicted:
@@ -159,7 +163,10 @@ for k_fold in range(num_folds):
                 ax[row_idx, col_idx].plot(dates_xaxis, GT.cpu().detach().numpy(), label='Ground Truth')
                 ax[row_idx, col_idx].plot(dates_xaxis, all_pred.cpu().detach().numpy(), label = 'Prediction')
                 ax[row_idx, col_idx].legend(fontsize=14)
-                ax[row_idx, col_idx].set_title('Predictions for ' + pedigree + ': ' + dates[0][0:4], fontsize=16)
+                if field_id <= 3: # make sure the plot title makes logical sense for the evaluation task
+                    ax[row_idx, col_idx].set_title('Predictions for ' + pedigree + ': ' + dates[0][0:4])
+                if field_id > 3: # make sure the plot title makes logical sense for the evaluation task
+                    ax[row_idx, col_idx].set_title('Predictions for N Treatment ' + str(nitrogen_treatment) + ': ' + dates[0][0:4])
                 ax[row_idx, col_idx].set_xlabel('Date', fontsize=16)
                 ax[row_idx, col_idx].set_ylabel('LAI', fontsize=16)
                 ax[row_idx, col_idx].tick_params(axis='x', labelsize=16)
