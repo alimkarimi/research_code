@@ -14,12 +14,20 @@ def train_test_split_for_dataloading(debug=False, field = 'hips_2021', return_sp
 
     df = get_svr_features(debug=False, data_path=field)
 
-    if field != '2022_f54': 
+    if field != '2022_f54':
         groups = df['pedigree']
         y = df['hybrid_or_inbred'] # used for stratification
     else:
         groups = df['Plot'] # group by plot id
         y = df['nitrogen_treatment'].astype('int') # used for stratification
+        # reorganize columns so that we can do simple indexing later:
+        if debug:
+            print(df.shape, df.columns)
+        # this reorg drops original LAI, replaces with SpATS adjusted LAI.
+        df = pd.concat([df.iloc[:, 0:17], df.iloc[:, 20], df.iloc[:, 17:19], df.iloc[:, -1], df.iloc[:, -5:-1]], axis = 1)
+        if debug:
+            print(df.shape, df.columns)
+
 
     # make a train and test split
     train_indices = None
@@ -38,7 +46,7 @@ def train_test_split_for_dataloading(debug=False, field = 'hips_2021', return_sp
         scaler_k_fold = StandardScaler()
         transformed_training = scaler_k_fold.fit_transform(df.iloc[train_indices, 1:-5])
         transformed_testing  = scaler_k_fold.transform(df.iloc[test_indices, 1:-5])
- 
+
         # convert back to a df:
         transformed_training = pd.DataFrame(transformed_training, columns = df.columns[1:-5])
         transformed_testing  = pd.DataFrame(transformed_testing, columns = df.columns[1:-5])
@@ -46,15 +54,14 @@ def train_test_split_for_dataloading(debug=False, field = 'hips_2021', return_sp
         # insert transformed df into "right part" of original df to preserve all the metadata.
         df.iloc[train_indices, 1 : -5] = transformed_training
         df.iloc[test_indices,  1 : -5] = transformed_testing
-
         if i == return_split:
             break # just get one stratified split for now. Deep learning models will take longer to optimize 
             # than statistical models. 
 
-    if debug:
-        print(train_indices)
-        print(test_indices)
-        print('train,test idx')
+        if debug:
+            print(train_indices)
+            print(test_indices)
+            print('train,test idx')
 
     return df, train_indices, test_indices
 
@@ -101,9 +108,8 @@ class FeaturesDataset(torch.utils.data.Dataset):
             self.field_id = 3
         if self.field == '2022_f54':
             self.field_id = 4
-        
-        print(len(train_indices), "length of TRAINING")
-        print(len(test_indices), "LENGTH OF TEST")
+            # rename spats_adj_LAI col to LAI. This is only for the purpose of not modifying __getitem__ function.
+            self.df.rename(columns={'spats_adj_LAI': 'LAI'}, inplace=True)
         
 
     def __len__(self):
