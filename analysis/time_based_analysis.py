@@ -12,10 +12,12 @@ len_obs = len(epoch_filtered_df.loc[0,'LAI_GTs'])
 total_folds = epoch_filtered_df['k_fold'].max()
 
 # to do:
-# compute RMSE, R2, rRMSE by date for test fold
-# compute overall RMSE, R2, rRMSE for test fold
-# compute variance of RMSE, R2, rRMSE by date for test fold
-# compute variance of RMSE, R2, rRMSE for test fold
+# for each experiment (HIPS 21, 22, f54)
+#       for each model (LSTM, Transformer)
+            # compute RMSE, R2, rRMSE by date for test fold
+            # compute overall RMSE, R2, rRMSE for test fold
+            # compute variance of RMSE, R2, rRMSE by date for test fold
+            # compute variance of RMSE, R2, rRMSE for test fold
 
 
 # build plots for each k-fold:
