@@ -19,6 +19,7 @@ import time
 
 from sklearn.metrics import r2_score, mean_squared_error
 
+torch.manual_seed(0) # to replicate results
 epochs = 20
 cpu_override=False
 field = 'hips_2022'
@@ -29,7 +30,8 @@ if field == 'hips_2022':
 if field == '2022_f54':
     timepoints=5
 # init transformer:
-model = Transformer(input_size = 17, embedding_dim=17, timepoints=timepoints, num_transformer_blocks=8)
+model = Transformer(input_size = 17, embedding_dim=17, timepoints=timepoints, num_transformer_blocks=8,
+                    custom_mha=False)
 
 # get number of model params:
 total_params = sum(p.numel() for p in model.parameters())

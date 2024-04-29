@@ -1,3 +1,4 @@
+from argparse import ArgumentParser
 from models import RNN
 
 import torch
@@ -8,6 +9,9 @@ import sys
 sys.path.append('..')
 from dataloading_scripts.feature_dataloader import FeaturesDataset
 from dataloading_scripts.read_purnima_features import get_svr_features
+from analysis.model_output_db import update_metrics_df, init_metrics_df
+from dataloading_scripts.dataloading_utils import get_field_metadata, get_subplot_metadata, field_dict
+
 
 from matplotlib import pyplot as plt
 
@@ -15,13 +19,27 @@ import numpy as np
 
 from sklearn.metrics import r2_score, mean_squared_error
 
-epochs = 20
+parser = ArgumentParser(description="Configure model hyperparameters")
+parser.add_argument('-epochs', type=int, help='Epoch to pull 1 to 1 plots from', default=20)
+parser.add_argument('-folds', type=int, help='Number of folds for cross validation', default=10)
+parser.add_argument('-metrics_db_name', help='Name for Metrics DB', default= None)
+parser.add_argument('-field', help="Field of observations - for Genotype or Management. Choices are"
+                    "2022_f54, hips_2021, or hips_2022", default=None)
+
+args = parser.parse_args()
+
+
+epochs = args.epochs
 criterion = nn.MSELoss()
 batch_size = 1
-num_folds = 10 # number of k-fold validations to run
+num_folds = args.folds # number of k-fold validations to run
 
 torch.manual_seed(0)
 np.random.seed(0)
+df_name = args.metrics_db_name + '_' + args.field
+print('this is DF name!!', df_name)
+
+metrics_df = init_metrics_df(df_name=df_name) # was 'LSTM_w_cv.pkl for LSTM'
 
 y_pred_all_folds = [] # to compute r2, rmse, and rel rmse for ALL testing data
 y_true_all_folds = [] # to compute r2, rmse, and rel rmse for ALL testing data
@@ -52,16 +70,9 @@ for k_fold in range(num_folds):
         device = torch.device("cpu")
         rnn = rnn.to("cpu")
 
-    field_dict = {
-        1 : 'HIPS 2021',
-        2 : 'HIPS 2022',
-        3 : 'HIPS 2021 + 2022',
-        4 : 'N-Experiments'
-    }
-
     # instantiate dataset
-    training_data = FeaturesDataset(field = '2022_f54', train=True, test=False, return_split=k_fold)
-    testing_data     = FeaturesDataset(field = '2022_f54', train=False, test=True, return_split=k_fold)
+    training_data = FeaturesDataset(field = args.field, train=True, test=False, return_split=k_fold)
+    testing_data     = FeaturesDataset(field = args.field, train=False, test=True, return_split=k_fold)
 
     # instantiate dataloaders for train/test
     training_dataloader = torch.utils.data.DataLoader(training_data, batch_size=1, num_workers = 0, drop_last=False, shuffle=True)
@@ -73,33 +84,8 @@ for k_fold in range(num_folds):
     relative_rmse_list = [] # used in function test_after_epoch
     total_loss = 0
 
-    def get_field_metadata(field_id):
-        if field_id == 1:
-            field = 'hips_2021'
-        if field_id == 2:
-            field = 'hips_2022'
-        if field_id == 3:
-            field = 'hips_both_years'
-        if field_id == 4:
-            field = '2022_f54'
-        df = get_svr_features(debug=False, data_path=field)
 
-        return df
-
-    def get_subplot_metadata(df, plot_id):
-        plot_id = np.array(plot_id.unique(), dtype=np.float64)
-        # query for the pedigree, hybrid/inbred, and dates:
-        pedigree = df[df['Plot'] == int(plot_id)]['pedigree'].unique()
-        nitrogen_treatment = df[df['Plot'] == int(plot_id)]['nitrogen_treatment'].unique()
-        hybrid_or_inbred = df[df['Plot'] == int(plot_id)]['hybrid_or_inbred'].unique()
-        dates = df[df['Plot'] == int(plot_id)]['date'].unique()
-        if hybrid_or_inbred.shape[0] != 1 or pedigree.shape[0] != 1:
-            print('WARNING: MULTIPLE PEDIGREES MIXED IN A PLOT PREDICITON')
-
-        return *pedigree, *hybrid_or_inbred, *nitrogen_treatment, dates
-
-
-    def test_after_epoch(epoch, field_id, plot_t_preds=True, plot_1to1=True):
+    def test_after_epoch(epoch, field_id, plot_t_preds=True, plot_1to1=True, metrics_df = metrics_df):
         df = get_field_metadata(field_id) # load the right dataframe so we can get the pedigree/genotype data when plotting.
         
         """
@@ -136,7 +122,7 @@ for k_fold in range(num_folds):
             
             out = rnn(features)
             _, _, final_pred, all_pred = out
-            #print(final_pred.shape, all_pred.shape, GT.shape)
+            #print( all_pred.shape, GT.shape)
             # generate plot of prediction vs GT:
             
 
@@ -148,7 +134,6 @@ for k_fold in range(num_folds):
                     # the rmse, rRMSE, and r**2 for all testing data.
                     y_true_all_folds.append(float(GT[x].cpu().detach().numpy())) 
                     y_pred_all_folds.append(float(all_pred[x].cpu().detach().numpy()))
-
 
             if plot_t_preds:
                 # get the right pedigree and hybrid/inbred data for the plot:
@@ -172,13 +157,13 @@ for k_fold in range(num_folds):
                 ax[row_idx, col_idx].tick_params(axis='x', labelsize=16)
                 ax[row_idx, col_idx].tick_params(axis='y', labelsize=16)
 
+            # update metrics db:
+            lookback = GT.shape[0]
+            # print(plot_id.shape)
+            metrics_df = update_metrics_df(df = metrics_df, model_name=df_name,
+                                        LAI_preds=y_pred[-lookback:], LAI_GTs=y_true[-lookback:], dates=dates, k_fold=k_fold, r2 = None, rmse = None, r_rmse=None,
+                                        epoch=epoch, plot_id = plot_id[0, 0].item(), field_id = field_id.item())
 
-                #print('lenght is', GT.cpu().detach().numpy().shape)
-                #
-                # print('y_true is', y_true)
-                # print('y_pred is', y_pred)
-
-                #loss = criterion(all_pred, GT)
 
         r_2 = r2_score(y_true, y_pred) # compute r_2 
         rmse = mean_squared_error(y_true, y_pred, squared=False) 
@@ -190,6 +175,7 @@ for k_fold in range(num_folds):
         rmse_list.append(rmse) # save RMSE for each epoch. List isn't currently used anywhere
         relative_rmse_list.append(relative_rmse) # save relative RMSE for each epoch. List isn't currently used anywhere
         print('r_2, rmse, relative_rmse testing after epoch' , epoch, ': ', r_2, rmse, relative_rmse)
+
 
         if plot_t_preds:
             fig.savefig('/Users/alim/Documents/prototyping/research_lab/research_code/models/GT_vs_pred_over_time/GT_vs_pred_sample_epoch' + str(epoch) + '_field' + str(int(field_id)) + '_fold' + str(k_fold) + '.jpg', 
@@ -226,6 +212,7 @@ for k_fold in range(num_folds):
         field_id = None
         for i, timeseries in enumerate(training_dataloader):
             optimizer.zero_grad()
+            idx_to_compute_avg_loss = len(training_dataloader)
 
             features, GT, plot_id, field_id_holder = timeseries
             field_id = field_id_holder # save field id for bringing up metadata in testing.
@@ -254,21 +241,22 @@ for k_fold in range(num_folds):
             optimizer.step() # take a step based on optimizer learning rate and hyper-parameters.
             total_loss += loss.item()
 
-            if (i + 1) % 50 == 0:
-                avg_loss = total_loss / 50
+            if (i + 1) % (idx_to_compute_avg_loss - 1) == 0:
+                avg_loss = total_loss / idx_to_compute_avg_loss
                 running_loss.append(avg_loss)
                 print("Loss in epoch", epoch, " is ", avg_loss)
                 total_loss = 0
 
         print('KICKING OFF TEST AFTER EPOCH')
-        test_after_epoch(epoch = epoch, field_id = field_id ) 
+        test_after_epoch(epoch = epoch, field_id = field_id)
 
 
     # print training loss curve after training run:
     plt.plot(running_loss)
-    plt.xlabel('Iteration * 50')
+    plt.xlabel('Epoch') # we can say epoch here becaue we are computing the average loss at the end of the 
+    # training for the epoch.
     plt.ylabel('Loss')
-    plt.title('Loss over training for ' + testing_data.field + 'fold ' + str(k_fold))
+    plt.title('Loss over training for ' + testing_data.field + '_fold ' + str(k_fold))
     plt.savefig('LSTM_loss_plots/training_running_loss_' + testing_data.field + '_fold' + str(k_fold) + '.jpg')
     plt.clf() # close figure so we can save r_2, rmse values later.
 
@@ -283,7 +271,7 @@ for k_fold in range(num_folds):
 
 
     # save the model:
-    torch.save(rnn.state_dict(), 'LSTM_models/trained_rnn_model_' + 'fold_' + str(k_fold) + '.pth')
+    torch.save(rnn.state_dict(), 'LSTM_models/trained_rnn_model_'+ args.field + 'fold_' + str(k_fold) + '.pth')
 
     print('done with fold', k_fold)
 

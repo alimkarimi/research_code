@@ -1,28 +1,42 @@
 import torch
 import torch.nn as nn
 from torch import optim
-import dask.dataframe as dd
 
+from argparse import ArgumentParser
 import sys
 sys.path.append('..')
+
 from dataloading_scripts.feature_dataloader import FeaturesDataset
 from dataloading_scripts.dataloading_utils import get_field_metadata, get_subplot_metadata, field_dict
+
 from models import Transformer
 from hyperspectral_lidar_processing.hyperspectral_plot_extraction import get_visual_hyperspectral_rgb
 
 from matplotlib import pyplot as plt
-
 import numpy as np
-import os
-
-import time
 
 from sklearn.metrics import r2_score, mean_squared_error
+from analysis.model_output_db import update_metrics_df, init_metrics_df
 
-epochs = 20
+parser = ArgumentParser(description="Configure model hyperparameters")
+parser.add_argument('-epochs', type=int, help='Epoch to pull 1 to 1 plots from', default=20)
+parser.add_argument('-folds', type=int, help='Number of folds for cross validation', default=10)
+parser.add_argument('-metrics_db_name', help='Name for Metrics DB. For example, transformer_w_cv', default= None)
+parser.add_argument('-field', help="Field of observations - for Genotype or Management. Choices are"
+                    "2022_f54, hips_2021, or hips_2022", default=None)
+
+args = parser.parse_args()
+
+torch.manual_seed(0) # to replicate results
+epochs = args.epochs
 cpu_override=False
-num_folds = 10
-field = '2022_f54'
+num_folds = args.folds
+field = args.field
+
+df_name = args.metrics_db_name + '_' + args.field
+print('this is DF name!!', df_name)
+
+metrics_df = init_metrics_df(df_name=df_name) # was 'LSTM_w_cv.pkl for LSTM'
 if field == 'hips_2021':
     timepoints=4
 if field == 'hips_2022':
@@ -30,7 +44,7 @@ if field == 'hips_2022':
 if field == '2022_f54':
     timepoints=5
 
-def test_after_epoch(epoch, field_id, plot_t_preds=True, plot_1to1=True):
+def test_after_epoch(epoch, field_id, plot_t_preds=True, plot_1to1=True, metrics_df = metrics_df):
     df = get_field_metadata(field_id) # load the right dataframe so we can get the pedigree/genotype data when plotting.
     
     """
@@ -98,6 +112,12 @@ def test_after_epoch(epoch, field_id, plot_t_preds=True, plot_1to1=True):
             # print('y_pred is', y_pred)
 
             #loss = criterion(all_pred, GT)
+        # update metrics db:
+        lookback = GT.shape[0]
+        # print(plot_id.shape)
+        metrics_df = update_metrics_df(df = metrics_df, model_name=df_name,
+                                   LAI_preds=y_pred[-lookback:], LAI_GTs=y_true[-lookback:], dates=dates, k_fold=k_fold, r2 = None, rmse = None, r_rmse=None,
+                                   epoch=epoch, plot_id = plot_id[0, 0].item(), field_id = field_id.item())
 
     r_2 = r2_score(y_true, y_pred) # compute r_2 
     rmse = mean_squared_error(y_true, y_pred, squared=False) 
@@ -131,6 +151,8 @@ def test_after_epoch(epoch, field_id, plot_t_preds=True, plot_1to1=True):
         # save after creating plot:
         plt.savefig('/Users/alim/Documents/prototyping/research_lab/research_code/models/one_to_one_plots/trans_one_to_one_epoch' + str(epoch) + '_field' + str(int(field_id)) + '_fold' + str(k_fold) + '.jpg')
         plt.clf() # clear plot/figure
+
+    
 
 for k_fold in range(num_folds):
     # init transformer for fold:
@@ -178,6 +200,9 @@ for k_fold in range(num_folds):
     for epoch in range(epochs):
         for n, timeseries in enumerate(training_dataloader):
             optimizer.zero_grad()
+            idx_to_compute_avg_loss = len(training_dataloader)
+
+            
 
             features, GT, plot_id, field_id_holder = timeseries
             field_id = field_id_holder # save field id for bringing up metadata in testing.
@@ -202,20 +227,25 @@ for k_fold in range(num_folds):
 
             optimizer.step()
 
-            if (n + 1) % 10 == 0:
-                avg_loss = total_loss / 10
+            if (n + 1) % (idx_to_compute_avg_loss - 1) == 0:
+                avg_loss = total_loss / 50
                 running_loss.append(avg_loss)
                 print('loss in epoch', epoch, ' is ', avg_loss)
                 total_loss = 0
         
         print('Starting test...')
         test_after_epoch(epoch=epoch, field_id=field_id, plot_t_preds=True, plot_1to1 = True)
+    print('done with fold', k_fold, '\n\n')
 
-    plt.plot(running_loss[10:])
-    plt.xlabel('Iteration * 10')
+    # save model after running training on current fold:
+    torch.save(model.state_dict(), 'transformer_models/trained_transformer_'+ args.field + 'fold_' + str(k_fold) + '.pth')
+
+
+    plt.plot(running_loss)
+    plt.xlabel('Epoch') # we compute loss once per epoch, so we can safely assume x-axis is the epoch.
     plt.ylabel('Loss')
     plt.title('Loss over training for ' + testing_data.field)
-    plt.savefig('transformer_training_running_loss_' + testing_data.field + '.jpg')
+    plt.savefig('Transformer_loss_plots/transformer_training_running_loss_' + testing_data.field + '_fold' + str(k_fold) + '.jpg')
     plt.clf() # close figure so we can save r_2, rmse values later.
     
             
