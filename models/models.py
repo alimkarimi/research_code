@@ -22,23 +22,6 @@ sys.path.append('..')
 from dataloading_scripts.read_purnima_features import get_svr_features
 
 
-# Note on imports: this also works:
-# sys.path.append('..')
-# Why do both work. How can I not use sys.path.append('..') or sys.path.append('long_folder_struct')? 
-
-# If I want to print out all the paths python is reading from, use this:
-# for i in sys.path:
-#     print(i)
-
-# if I do:
-# from vectorization_scripts import read_purnima_features
-# then,
-# from read_purnima_features import get_svr_features
-# I will get an import error. However:
-# from vectorization_scripts.read_purnima_features import get_svr_features works. Why??
-
-
-
 class LSTM_addition_based(nn.Module):
     """
     In an LSTM, hidden state is for immediate, short term memory while cell state is for 
@@ -264,7 +247,7 @@ class CustomMultiHeadedAttention(nn.Module):
     modality. For example, for a 17 dimensional vector have one head attend to hyperspectral, another
     attend to LiDAR, and the last attend to weather data
     """
-    def __init__(self, embedding_dim=17, hs_size = 8, lidar_size=7, weather_size=2):
+    def __init__(self, embedding_dim=17, hs_size = 6, lidar_size=6, weather_size=5):
         super(CustomMultiHeadedAttention, self).__init__()
 
         self.embedding_dim = embedding_dim
@@ -289,10 +272,11 @@ class CustomMultiHeadedAttention(nn.Module):
         self.mha_weather = nn.MultiheadAttention(embed_dim=self.weather_size, num_heads=1)
 
     def forward(self, x):
-        x_hs = x[:, 7:15]
-        x_lidar = x[:, 0:7]
-        x_weather = x[:, 15:]
+        x_lidar = x[:, 0:6] # select LiDAR features
+        x_hs = x[:, 6:12] # select hyperspectral features
+        x_weather = x[:, 12:] # select weather features
 
+        # apply learnable projections to generate queries, keys, vectors for each head
         Q_hs = self.Q_proj_hs(x_hs)
         K_hs = self.K_proj_hs(x_hs)
         V_hs = self.V_proj_hs(x_hs)
@@ -307,7 +291,6 @@ class CustomMultiHeadedAttention(nn.Module):
 
         # now that we have queries, keys, vectors from the learned Q, K, V projections, we can apply attention 
         # separately to each modality
-
         out_hs, weights_hs = self.mha_hs(Q_hs, K_hs, V_hs)
         out_lidar, weights_lidar = self.mha_lidar(Q_lidar, K_lidar, V_lidar)
         out_weather, weights_weather = self.mha_weather(Q_weather, K_weather, V_weather)
@@ -316,8 +299,6 @@ class CustomMultiHeadedAttention(nn.Module):
         concat_heads = torch.concat([out_hs, out_lidar, out_weather], axis=1)
 
         return concat_heads
-
-
 
 class TransformerBlock(nn.Module):
     """
@@ -384,7 +365,7 @@ class TransformerBlock(nn.Module):
 
 
 class Transformer(nn.Module):
-    def __init__(self, input_size = 17, embedding_dim = 17, timepoints=4, num_transformer_blocks=6, custom_mha=True):
+    def __init__(self, input_size = 17, embedding_dim = 17, timepoints=4, num_transformer_blocks=6, custom_mha=False):
         super(Transformer, self).__init__()
         self.input_size = input_size
         self.embedding_dim = embedding_dim
